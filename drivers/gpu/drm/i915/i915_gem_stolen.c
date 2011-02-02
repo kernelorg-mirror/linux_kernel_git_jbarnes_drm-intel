@@ -237,7 +237,7 @@ _i915_gem_object_create_stolen(struct drm_device *dev,
 	struct drm_i915_gem_object *obj;
 	struct scatterlist *sg;
 
-	obj = kzalloc(sizeof(*obj), GFP_KERNEL);
+	obj = i915_gem_object_alloc(dev);
 	if (obj == NULL)
 		return NULL;
 
@@ -262,7 +262,7 @@ _i915_gem_object_create_stolen(struct drm_device *dev,
 	return obj;
 
 cleanup:
-	kfree(obj);
+	i915_gem_object_free(obj);
 	return NULL;
 }
 
