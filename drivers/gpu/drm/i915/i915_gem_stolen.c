@@ -248,7 +248,7 @@ _i915_gem_object_create_stolen(struct drm_device *dev,
 	if (sg == NULL)
 		goto cleanup;
 
-	i915_gem_object_init(obj);
+	i915_gem_object_init(obj, NULL);
 
 	obj->stolen = stolen;
 
