@@ -2795,12 +2795,15 @@ i915_gem_clflush_object(struct drm_i915_gem_object *obj)
 	 * snooping behaviour occurs naturally as the result of our domain
 	 * tracking.
 	 */
-	if (obj->cache_level != I915_CACHE_NONE)
+	if (obj->cache_level != I915_CACHE_NONE) {
+		obj->cache_dirty = obj->cache_level;
 		return;
+	}
 
 	trace_i915_gem_object_clflush(obj);
 
 	drm_clflush_pages(obj->pages, obj->base.size / PAGE_SIZE);
+	obj->cache_dirty = I915_CACHE_NONE;
 }
 
 /** Flushes any GPU write domain for the object if it's dirty. */
@@ -2969,7 +2972,7 @@ int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 					       obj, cache_level);
 	}
 
-	if (cache_level == I915_CACHE_NONE) {
+	if (obj->cache_dirty) {
 		u32 old_read_domains, old_write_domain;
 
 		/* If we're coming from LLC cached, then we haven't
