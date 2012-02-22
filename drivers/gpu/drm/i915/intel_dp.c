@@ -311,7 +311,13 @@ static bool ironlake_edp_have_panel_power(struct intel_dp *intel_dp)
 	struct drm_device *dev = intel_dp->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	return (I915_READ(PCH_PP_STATUS) & PP_ON) != 0;
+	if (IS_VALLEYVIEW(dev)) {
+		if (I915_READ(intel_dp->output_reg) & DP_PIPEB_SELECT)
+			return (I915_READ(PIPEB_PP_STATUS) & PP_ON) != 0;
+		else
+			return (I915_READ(PIPEA_PP_STATUS) & PP_ON) != 0;
+	} else
+		return (I915_READ(PCH_PP_STATUS) & PP_ON) != 0;
 }
 
 static bool ironlake_edp_have_panel_vdd(struct intel_dp *intel_dp)
