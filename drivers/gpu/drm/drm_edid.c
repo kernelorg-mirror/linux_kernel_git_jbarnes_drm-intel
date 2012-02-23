@@ -35,6 +35,9 @@
 #include "drm_edid.h"
 #include "drm_edid_modes.h"
 
+#define EDID_PROBE_RETRIES 1
+#define EDID_READ_RETRIES 5
+
 #define version_greater(edid, maj, min) \
 	(((edid)->version > (maj)) || \
 	 ((edid)->version == (maj) && (edid)->revision > (min)))
@@ -238,11 +241,12 @@ EXPORT_SYMBOL(drm_edid_is_valid);
  * Try to fetch EDID information by calling i2c driver function.
  */
 static int
-drm_do_probe_ddc_edid(struct i2c_adapter *adapter, unsigned char *buf,
-		      int block, int len)
+drm_get_edid_block(struct i2c_adapter *adapter,
+		   unsigned char *buf, int block, int len,
+		   int retries)
 {
 	unsigned char start = block * EDID_LENGTH;
-	int ret, retries = 5;
+	int ret;
 
 	/* The core i2c driver will automatically retry the transfer if the
 	 * adapter reports EAGAIN. However, we find that bit-banging transfers
@@ -297,7 +301,19 @@ drm_do_get_edid(struct drm_connector *connector, struct i2c_adapter *adapter)
 
 	/* base block fetch */
 	for (i = 0; i < 4; i++) {
-		if (drm_do_probe_ddc_edid(adapter, block, 0, EDID_LENGTH))
+		/* EDID transfer may be quite processor intensive and last
+		 * a long time. For example, when waiting for a timeout on
+		 * a non-existent connector whilst using bit-banging. As a
+		 * result we can end up hogging the machine, so give someone
+		 * else the chance to run first. But when we have started a
+		 * transfer don't interrupt until finished.
+		 */
+		if (need_resched())
+			schedule();
+
+		if (drm_get_edid_block(adapter,
+				       block, 0, EDID_LENGTH,
+				       EDID_PROBE_RETRIES))
 			goto out;
 		if (drm_edid_block_valid(block, 0))
 			break;
@@ -320,9 +336,9 @@ drm_do_get_edid(struct drm_connector *connector, struct i2c_adapter *adapter)
 
 	for (j = 1; j <= block[0x7e]; j++) {
 		for (i = 0; i < 4; i++) {
-			if (drm_do_probe_ddc_edid(adapter,
+			if (drm_get_edid_block(adapter,
 				  block + (valid_extensions + 1) * EDID_LENGTH,
-				  j, EDID_LENGTH))
+				  j, EDID_LENGTH, EDID_READ_RETRIES))
 				goto out;
 			if (drm_edid_block_valid(block + (valid_extensions + 1) * EDID_LENGTH, j)) {
 				valid_extensions++;
@@ -366,7 +382,7 @@ drm_probe_ddc(struct i2c_adapter *adapter)
 {
 	unsigned char out;
 
-	return (drm_do_probe_ddc_edid(adapter, &out, 0, 1) == 0);
+	return drm_get_edid_block(adapter, &out, 0, 1, EDID_PROBE_RETRIES) == 0;
 }
 
 /**
