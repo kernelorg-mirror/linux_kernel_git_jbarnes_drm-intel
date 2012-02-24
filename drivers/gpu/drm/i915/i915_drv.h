@@ -692,6 +692,13 @@ typedef struct drm_i915_private {
 		 */
 		struct list_head inactive_list;
 
+		/**
+		 * List of objects which are not bound to the GTT (thus
+		 * are idle and not used by the GPU) but still have
+		 * (presumably uncached) pages still attached.
+		 */
+		struct list_head unbound_list;
+
 		/** LRU list of objects with fence regs on them. */
 		struct list_head fence_list;
 
@@ -1362,7 +1369,7 @@ void i915_gem_init_global_gtt(struct drm_device *dev,
 /* i915_gem_evict.c */
 int __must_check i915_gem_evict_something(struct drm_device *dev, int min_size,
 					  unsigned alignment, bool mappable);
-int i915_gem_evict_everything(struct drm_device *dev, bool purgeable_only);
+int i915_gem_evict_everything(struct drm_device *dev);
 
 /* i915_gem_stolen.c */
 int i915_gem_init_stolen(struct drm_device *dev);

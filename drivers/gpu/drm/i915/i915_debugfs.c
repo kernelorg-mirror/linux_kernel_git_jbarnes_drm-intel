@@ -247,6 +247,11 @@ static int i915_gem_object_info(struct seq_file *m, void* data)
 	seq_printf(m, "  %u [%u] inactive objects, %zu [%zu] bytes\n",
 		   count, mappable_count, size, mappable_size);
 
+	size = count = 0;
+	list_for_each_entry(obj, &dev_priv->mm.unbound_list, mm_list)
+		size += obj->base.size, ++count;
+	seq_printf(m, "%u unbound objects, %zu bytes\n", count, size);
+
 	size = count = mappable_size = mappable_count = 0;
 	list_for_each_entry(obj, &dev_priv->mm.gtt_list, gtt_list) {
 		if (obj->fault_mappable) {
