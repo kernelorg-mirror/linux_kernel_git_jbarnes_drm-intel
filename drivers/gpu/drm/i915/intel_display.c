@@ -46,6 +46,7 @@
 bool intel_pipe_has_type(struct drm_crtc *crtc, int type);
 static void intel_increase_pllclock(struct drm_crtc *crtc);
 static void intel_crtc_update_cursor(struct drm_crtc *crtc, bool on);
+static void __intel_crtc_load_lut(struct intel_crtc *crtc, void *data);
 
 typedef struct {
 	/* given values */
@@ -3101,7 +3102,7 @@ static void ironlake_crtc_enable(struct drm_crtc *crtc)
 	 * On ILK+ LUT must be loaded before the pipe is running but with
 	 * clocks enabled
 	 */
-	intel_crtc_load_lut(crtc);
+	__intel_crtc_load_lut(to_intel_crtc(crtc), NULL);
 
 	intel_enable_pipe(dev_priv, pipe, is_pch_port);
 	intel_enable_plane(dev_priv, plane, pipe);
@@ -4997,29 +4998,41 @@ void intel_write_eld(struct drm_encoder *encoder,
 		dev_priv->display.write_eld(connector, crtc);
 }
 
+static void __intel_crtc_load_lut(struct intel_crtc *crtc,
+				  void *data)
+{
+	struct drm_i915_private *dev_priv = crtc->base.dev->dev_private;
+	int reg;
+	int i;
+
+	if (!crtc->base.enabled || !crtc->active)
+		return;
+
+	/* use legacy palette for Ironlake */
+	reg = PALETTE(crtc->pipe);
+	if (HAS_PCH_SPLIT(crtc->base.dev))
+		reg = LGC_PALETTE(crtc->pipe);
+
+	for (i = 0; i < 256; i++) {
+		I915_WRITE(reg + 4 * i,
+			   crtc->lut_r[i] << 16 |
+			   crtc->lut_g[i] << 8  |
+			   crtc->lut_b[i]);
+	}
+}
+
 /** Loads the palette/gamma unit for the CRTC with the prepared values */
 void intel_crtc_load_lut(struct drm_crtc *crtc)
 {
-	struct drm_device *dev = crtc->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int palreg = PALETTE(intel_crtc->pipe);
-	int i;
 
 	/* The clocks have to be on to load the palette. */
 	if (!crtc->enabled || !intel_crtc->active)
 		return;
 
-	/* use legacy palette for Ironlake */
-	if (HAS_PCH_SPLIT(dev))
-		palreg = LGC_PALETTE(intel_crtc->pipe);
-
-	for (i = 0; i < 256; i++) {
-		I915_WRITE(palreg + 4 * i,
-			   (intel_crtc->lut_r[i] << 16) |
-			   (intel_crtc->lut_g[i] << 8) |
-			   intel_crtc->lut_b[i]);
-	}
+	if (intel_crtc_add_vblank_task(intel_crtc, true,
+				       __intel_crtc_load_lut, NULL))
+		__intel_crtc_load_lut(intel_crtc, NULL);
 }
 
 static void i845_update_cursor(struct drm_crtc *crtc, u32 base)
@@ -5306,6 +5319,7 @@ static void intel_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green,
 	int end = (start + size > 256) ? 256 : start + size, i;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
+	/* We race here with setting the lut and reading it during vblank. */
 	for (i = start; i < end; i++) {
 		intel_crtc->lut_r[i] = red[i] >> 8;
 		intel_crtc->lut_g[i] = green[i] >> 8;
