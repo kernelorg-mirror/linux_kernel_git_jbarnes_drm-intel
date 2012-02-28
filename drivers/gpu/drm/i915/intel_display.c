@@ -45,6 +45,7 @@
 
 bool intel_pipe_has_type(struct drm_crtc *crtc, int type);
 static void intel_increase_pllclock(struct drm_crtc *crtc);
+static void intel_crtc_restore_pllclock(struct drm_crtc *crtc);
 static void intel_crtc_update_cursor(struct drm_crtc *crtc, bool on);
 static void __intel_crtc_load_lut(struct intel_crtc *crtc, void *data);
 
@@ -2037,7 +2038,8 @@ intel_pipe_set_base_atomic(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 
 	if (dev_priv->display.disable_fbc)
 		dev_priv->display.disable_fbc(dev);
-	intel_increase_pllclock(crtc);
+
+	intel_crtc_restore_pllclock(crtc);
 
 	return dev_priv->display.update_plane(crtc, fb, x, y);
 }
@@ -2140,6 +2142,7 @@ intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 	intel_update_fbc(dev);
 	mutex_unlock(&dev->struct_mutex);
 
+	intel_increase_pllclock(crtc);
 	if (!dev->primary->master)
 		return 0;
 
@@ -5701,35 +5704,67 @@ struct drm_display_mode *intel_crtc_mode_get(struct drm_device *dev,
 	return mode;
 }
 
+static void __gmch_crtc_increase_pllclock(struct intel_crtc *crtc,
+					  void *data)
+{
+	drm_i915_private_t *dev_priv = crtc->base.dev->dev_private;
+	int dpll_reg = DPLL(crtc->pipe);
+	int dpll;
+
+	dpll = I915_READ(dpll_reg);
+	if (dpll & DISPLAY_RATE_SELECT_FPA1) {
+		DRM_DEBUG_DRIVER("upclocking LVDS\n");
+
+		assert_panel_unlocked(dev_priv, crtc->pipe);
+		I915_WRITE(dpll_reg, dpll & ~DISPLAY_RATE_SELECT_FPA1);
+	}
+}
+
+static void intel_crtc_restore_pllclock(struct drm_crtc *crtc)
+{
+	struct drm_device *dev = crtc->dev;
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	int reg;
+
+	if (HAS_PCH_SPLIT(dev) || HAS_PIPE_CXSR(dev))
+		return;
+
+	reg = DPLL(to_intel_crtc(crtc)->pipe);
+	I915_WRITE(reg, I915_READ(reg) & ~DISPLAY_RATE_SELECT_FPA1);
+}
+
 static void intel_increase_pllclock(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe;
-	int dpll_reg = DPLL(pipe);
-	int dpll;
 
-	if (HAS_PCH_SPLIT(dev))
+	if (HAS_PCH_SPLIT(dev) || HAS_PIPE_CXSR(dev))
 		return;
 
 	if (!dev_priv->lvds_downclock_avail)
 		return;
 
-	dpll = I915_READ(dpll_reg);
-	if (!HAS_PIPE_CXSR(dev) && (dpll & DISPLAY_RATE_SELECT_FPA1)) {
-		DRM_DEBUG_DRIVER("upclocking LVDS\n");
+	if (intel_crtc_add_vblank_task(intel_crtc, true,
+				       __gmch_crtc_increase_pllclock,
+				       NULL))
+		__gmch_crtc_increase_pllclock(intel_crtc, NULL);
+}
 
-		assert_panel_unlocked(dev_priv, pipe);
+static void __gmch_crtc_decrease_pllclock(struct intel_crtc *crtc,
+					  void *data)
+{
+	drm_i915_private_t *dev_priv = crtc->base.dev->dev_private;
+	int dpll_reg = DPLL(crtc->pipe);
 
-		dpll &= ~DISPLAY_RATE_SELECT_FPA1;
-		I915_WRITE(dpll_reg, dpll);
-		intel_wait_for_vblank(dev, pipe);
+	/*
+	 * Since this is called by a timer, we should never get here in
+	 * the manual case.
+	 */
+	DRM_DEBUG_DRIVER("downclocking LVDS\n");
 
-		dpll = I915_READ(dpll_reg);
-		if (dpll & DISPLAY_RATE_SELECT_FPA1)
-			DRM_DEBUG_DRIVER("failed to upclock LVDS!\n");
-	}
+	assert_panel_unlocked(dev_priv, crtc->pipe);
+	I915_WRITE(dpll_reg, I915_READ(dpll_reg) | DISPLAY_RATE_SELECT_FPA1);
 }
 
 static void intel_decrease_pllclock(struct drm_crtc *crtc)
@@ -5738,34 +5773,16 @@ static void intel_decrease_pllclock(struct drm_crtc *crtc)
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
-	if (HAS_PCH_SPLIT(dev))
+	if (HAS_PCH_SPLIT(dev) || HAS_PIPE_CXSR(dev))
 		return;
 
-	if (!dev_priv->lvds_downclock_avail)
+	if (!dev_priv->lvds_downclock_avail || !intel_crtc->lowfreq_avail)
 		return;
 
-	/*
-	 * Since this is called by a timer, we should never get here in
-	 * the manual case.
-	 */
-	if (!HAS_PIPE_CXSR(dev) && intel_crtc->lowfreq_avail) {
-		int pipe = intel_crtc->pipe;
-		int dpll_reg = DPLL(pipe);
-		int dpll;
-
-		DRM_DEBUG_DRIVER("downclocking LVDS\n");
-
-		assert_panel_unlocked(dev_priv, pipe);
-
-		dpll = I915_READ(dpll_reg);
-		dpll |= DISPLAY_RATE_SELECT_FPA1;
-		I915_WRITE(dpll_reg, dpll);
-		intel_wait_for_vblank(dev, pipe);
-		dpll = I915_READ(dpll_reg);
-		if (!(dpll & DISPLAY_RATE_SELECT_FPA1))
-			DRM_DEBUG_DRIVER("failed to downclock LVDS!\n");
-	}
-
+	if (intel_crtc_add_vblank_task(intel_crtc, true,
+				       __gmch_crtc_decrease_pllclock,
+				       NULL))
+		__gmch_crtc_decrease_pllclock(intel_crtc, NULL);
 }
 
 void intel_mark_busy(struct drm_device *dev)
@@ -6987,7 +7004,6 @@ void intel_modeset_cleanup(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_crtc *crtc;
-	struct intel_crtc *intel_crtc;
 
 	/* Clear the vblank worker prior to taking any locks */
 	flush_scheduled_work();
@@ -7005,8 +7021,7 @@ void intel_modeset_cleanup(struct drm_device *dev)
 		if (!crtc->fb)
 			continue;
 
-		intel_crtc = to_intel_crtc(crtc);
-		intel_increase_pllclock(crtc);
+		intel_crtc_restore_pllclock(crtc);
 	}
 
 	intel_disable_fbc(dev);
