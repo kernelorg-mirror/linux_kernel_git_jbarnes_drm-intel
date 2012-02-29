@@ -94,7 +94,8 @@ static int i915_setup_compression(struct drm_device *dev, int size)
 	DRM_DEBUG_KMS("reserving %d bytes of contiguous stolen space for FBC\n",
 		      size);
 
-	compressed_fb = drm_mm_search_free(&dev_priv->mm.stolen, size, 4096, 0);
+	compressed_fb = drm_mm_search_free(&dev_priv->mm.stolen,
+					   size, 4096, 0, 0);
 	if (compressed_fb)
 		compressed_fb = drm_mm_get_block(compressed_fb, size, 4096);
 	if (!compressed_fb)
@@ -106,7 +107,7 @@ static int i915_setup_compression(struct drm_device *dev, int size)
 		I915_WRITE(DPFC_CB_BASE, compressed_fb->start);
 	} else {
 		compressed_llb = drm_mm_search_free(&dev_priv->mm.stolen,
-						    4096, 4096, 0);
+						    4096, 4096, 0, 0);
 		if (compressed_llb)
 			compressed_llb = drm_mm_get_block(compressed_llb,
 							  4096, 4096);
@@ -279,7 +280,7 @@ i915_gem_object_create_stolen(struct drm_device *dev, u32 size)
 	if (size == 0)
 		return NULL;
 
-	stolen = drm_mm_search_free(&dev_priv->mm.stolen, size, 4096, 0);
+	stolen = drm_mm_search_free(&dev_priv->mm.stolen, size, 4096, 0, 0);
 	if (stolen)
 		stolen = drm_mm_get_block(stolen, size, 4096);
 	if (stolen == NULL)

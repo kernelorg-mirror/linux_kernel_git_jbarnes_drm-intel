@@ -148,7 +148,7 @@ nv04_instmem_get(struct nouveau_gpuobj *gpuobj, struct nouveau_channel *chan,
 			return -ENOMEM;
 
 		spin_lock(&dev_priv->ramin_lock);
-		ramin = drm_mm_search_free(&dev_priv->ramin_heap, size, align, 0);
+		ramin = drm_mm_search_free(&dev_priv->ramin_heap, size, align, 0, 0);
 		if (ramin == NULL) {
 			spin_unlock(&dev_priv->ramin_lock);
 			return -ENOMEM;

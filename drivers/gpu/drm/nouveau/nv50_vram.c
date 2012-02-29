@@ -105,7 +105,7 @@ nv50_vram_new(struct drm_device *dev, u64 size, u32 align, u32 size_nc,
 			struct nouveau_fb_engine *pfb = &dev_priv->engine.fb;
 			int n = (size >> 4) * comp;
 
-			mem->tag = drm_mm_search_free(&pfb->tag_heap, n, 0, 0);
+			mem->tag = drm_mm_search_free(&pfb->tag_heap, n, 0, 0, 0);
 			if (mem->tag)
 				mem->tag = drm_mm_get_block(mem->tag, n, 0);
 		}

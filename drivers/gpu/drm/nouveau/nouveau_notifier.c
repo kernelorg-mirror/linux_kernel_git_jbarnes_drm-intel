@@ -118,10 +118,10 @@ nouveau_notifier_alloc(struct nouveau_channel *chan, uint32_t handle,
 	uint64_t offset;
 	int target, ret;
 
-	mem = drm_mm_search_free_in_range(&chan->notifier_heap, size, 0,
+	mem = drm_mm_search_free_in_range(&chan->notifier_heap, size, 0, 0,
 					  start, end, 0);
 	if (mem)
-		mem = drm_mm_get_block_range(mem, size, 0, start, end);
+		mem = drm_mm_get_block_range(mem, size, 0, 0, start, end);
 	if (!mem) {
 		NV_ERROR(dev, "Channel %d notifier block full\n", chan->id);
 		return -ENOMEM;

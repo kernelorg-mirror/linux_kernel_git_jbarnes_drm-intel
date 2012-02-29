@@ -16,7 +16,7 @@ nv20_fb_alloc_tag(struct drm_device *dev, uint32_t size)
 		return NULL;
 
 	spin_lock(&dev_priv->tile.lock);
-	mem = drm_mm_search_free(&pfb->tag_heap, size, 0, 0);
+	mem = drm_mm_search_free(&pfb->tag_heap, size, 0, 0, 0);
 	if (mem)
 		mem = drm_mm_get_block_atomic(mem, size, 0);
 	spin_unlock(&dev_priv->tile.lock);

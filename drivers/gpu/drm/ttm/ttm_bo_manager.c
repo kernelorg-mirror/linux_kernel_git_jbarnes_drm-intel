@@ -68,14 +68,14 @@ static int ttm_bo_man_get_node(struct ttm_mem_type_manager *man,
 
 		spin_lock(&rman->lock);
 		node = drm_mm_search_free_in_range(mm,
-					mem->num_pages, mem->page_alignment,
+					mem->num_pages, mem->page_alignment, 0,
 					placement->fpfn, lpfn, 1);
 		if (unlikely(node == NULL)) {
 			spin_unlock(&rman->lock);
 			return 0;
 		}
 		node = drm_mm_get_block_atomic_range(node, mem->num_pages,
-						     mem->page_alignment,
+						     mem->page_alignment, 0,
 						     placement->fpfn,
 						     lpfn);
 		spin_unlock(&rman->lock);

@@ -1680,7 +1680,7 @@ retry_pre_get:
 
 	write_lock(&bdev->vm_lock);
 	bo->vm_node = drm_mm_search_free(&bdev->addr_space_mm,
-					 bo->mem.num_pages, 0, 0);
+					 bo->mem.num_pages, 0, 0, 0);
 
 	if (unlikely(bo->vm_node == NULL)) {
 		ret = -ENOMEM;

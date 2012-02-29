@@ -285,7 +285,7 @@ semaphore_alloc(struct drm_device *dev)
 		goto fail;
 
 	spin_lock(&dev_priv->fence.lock);
-	sema->mem = drm_mm_search_free(&dev_priv->fence.heap, size, 0, 0);
+	sema->mem = drm_mm_search_free(&dev_priv->fence.heap, size, 0, 0, 0);
 	if (sema->mem)
 		sema->mem = drm_mm_get_block_atomic(sema->mem, size, 0);
 	spin_unlock(&dev_priv->fence.lock);

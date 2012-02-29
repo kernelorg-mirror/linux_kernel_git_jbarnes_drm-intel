@@ -192,7 +192,7 @@ nouveau_gpuobj_new(struct drm_device *dev, struct nouveau_channel *chan,
 	spin_unlock(&dev_priv->ramin_lock);
 
 	if (!(flags & NVOBJ_FLAG_VM) && chan) {
-		ramin = drm_mm_search_free(&chan->ramin_heap, size, align, 0);
+		ramin = drm_mm_search_free(&chan->ramin_heap, size, align, 0, 0);
 		if (ramin)
 			ramin = drm_mm_get_block(ramin, size, align);
 		if (!ramin) {
