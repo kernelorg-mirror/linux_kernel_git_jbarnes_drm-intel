@@ -8329,6 +8329,24 @@ static void intel_setup_outputs(struct drm_device *dev)
 		if (!dpd_is_edp && (I915_READ(PCH_DP_D) & DP_DETECTED))
 			intel_dp_init(dev, PCH_DP_D);
 
+	} else if (IS_VALLEYVIEW(dev)) {
+		int found;
+
+		if (I915_READ(VLV_HDMIB) & PORT_DETECTED) {
+			/* SDVOB multiplex with HDMIB */
+			found = intel_sdvo_init(dev, VLV_HDMIB);
+			if (!found)
+				intel_hdmi_init(dev, VLV_HDMIB);
+			if (!found && (I915_READ(DP_B) & DP_DETECTED))
+				intel_dp_init(dev, DP_B);
+		}
+
+		if (I915_READ(SDVOC) & PORT_DETECTED)
+			intel_hdmi_init(dev, SDVOC);
+
+		/* Shares lanes with HDMI on SDVOC */
+		if (!dpd_is_edp && (I915_READ(DP_C) & DP_DETECTED))
+			intel_dp_init(dev, DP_C);
 	} else if (SUPPORTS_DIGITAL_OUTPUTS(dev)) {
 		bool found = false;
 
