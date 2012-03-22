@@ -886,7 +886,7 @@ int i915_restore_state(struct drm_device *dev)
 		intel_init_emon(dev);
 	}
 
-	if (INTEL_INFO(dev)->gen >= 6) {
+	if (INTEL_INFO(dev)->gen >= 6 && !IS_VALLEYVIEW(dev)) {
 		gen6_enable_rps(dev_priv);
 		gen6_update_ring_freq(dev_priv);
 	}
