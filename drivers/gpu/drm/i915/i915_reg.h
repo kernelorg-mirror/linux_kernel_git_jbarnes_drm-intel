@@ -2989,6 +2989,7 @@
 #define DVSSTRIDE(pipe) _PIPE(pipe, _DVSASTRIDE, _DVSBSTRIDE)
 #define DVSPOS(pipe) _PIPE(pipe, _DVSAPOS, _DVSBPOS)
 #define DVSSURF(pipe) _PIPE(pipe, _DVSASURF, _DVSBSURF)
+#define DVSSURFLIVE(pipe) _PIPE(pipe, _DVSASURFLIVE, _DVSBSURFLIVE)
 #define DVSKEYMAX(pipe) _PIPE(pipe, _DVSAKEYMAXVAL, _DVSBKEYMAXVAL)
 #define DVSSIZE(pipe) _PIPE(pipe, _DVSASIZE, _DVSBSIZE)
 #define DVSSCALE(pipe) _PIPE(pipe, _DVSASCALE, _DVSBSCALE)
@@ -3029,6 +3030,7 @@
 #define _SPRA_SURF		0x7029c
 #define _SPRA_KEYMAX		0x702a0
 #define _SPRA_TILEOFF		0x702a4
+#define _SPRA_SURFLIVE		0x702ac
 #define _SPRA_SCALE		0x70304
 #define   SPRITE_SCALE_ENABLE	(1<<31)
 #define   SPRITE_FILTER_MASK	(3<<29)
@@ -3049,6 +3051,7 @@
 #define _SPRB_SURF		0x7129c
 #define _SPRB_KEYMAX		0x712a0
 #define _SPRB_TILEOFF		0x712a4
+#define _SPRB_SURFLIVE		0x712ac
 #define _SPRB_SCALE		0x71304
 #define _SPRB_GAMC		0x71400
 
@@ -3060,6 +3063,7 @@
 #define SPRKEYVAL(pipe) _PIPE(pipe, _SPRA_KEYVAL, _SPRB_KEYVAL)
 #define SPRKEYMSK(pipe) _PIPE(pipe, _SPRA_KEYMSK, _SPRB_KEYMSK)
 #define SPRSURF(pipe) _PIPE(pipe, _SPRA_SURF, _SPRB_SURF)
+#define SPRSURFLIVE(pipe) _PIPE(pipe, _SPRA_SURFLIVE, _SPRB_SURFLIVE)
 #define SPRKEYMAX(pipe) _PIPE(pipe, _SPRA_KEYMAX, _SPRB_KEYMAX)
 #define SPRTILEOFF(pipe) _PIPE(pipe, _SPRA_TILEOFF, _SPRB_TILEOFF)
 #define SPRSCALE(pipe) _PIPE(pipe, _SPRA_SCALE, _SPRB_SCALE)
