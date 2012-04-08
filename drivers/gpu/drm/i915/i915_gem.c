@@ -2049,10 +2049,23 @@ i915_gem_check_olr(struct intel_ring_buffer *ring, u32 seqno)
 }
 
 static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
-			bool interruptible)
+			bool interruptible, long *usecs)
 {
 	drm_i915_private_t *dev_priv = ring->dev->dev_private;
-	int ret = 0;
+	bool wait_forever = false;
+	long timeout, end;
+
+	if (usecs == NULL || ((*usecs) < 0)) {
+		wait_forever = true;
+		timeout = msecs_to_jiffies(100);
+	} else
+		timeout = usecs_to_jiffies(*usecs);
+
+	if (i915_seqno_passed(ring->get_seqno(ring), seqno))
+		return 0;
+
+	if (WARN_ON(!ring->irq_get(ring)))
+		return -ENODEV;
 
 	if (i915_seqno_passed(ring->get_seqno(ring), seqno))
 		return 0;
@@ -2065,17 +2078,40 @@ static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
 	(i915_seqno_passed(ring->get_seqno(ring), seqno) || \
 	atomic_read(&dev_priv->mm.wedged))
 
+	trace_i915_gem_request_wait_begin(ring, seqno);
+again:
 	if (interruptible)
-		ret = wait_event_interruptible(ring->irq_queue,
-					       EXIT_COND);
+		end = wait_event_interruptible_timeout(ring->irq_queue,
+						       EXIT_COND,
+						       timeout);
 	else
-		wait_event(ring->irq_queue, EXIT_COND);
-
-	ring->irq_put(ring);
-	trace_i915_gem_request_wait_end(ring, seqno);
+		end = wait_event_timeout(ring->irq_queue, EXIT_COND, timeout);
 #undef EXIT_COND
 
-	return ret;
+	if (atomic_read(&dev_priv->mm.wedged))
+		end = -EAGAIN;
+
+	if (end == 0 && wait_forever)
+		goto again;
+
+	trace_i915_gem_request_wait_end(ring, seqno);
+	ring->irq_put(ring);
+
+	if (!wait_forever) {
+		BUG_ON(end == 0);
+		*usecs = jiffies_to_usecs(timeout - end);
+	}
+
+	switch (end) {
+	case -EAGAIN: /* Wedged */
+	case -ERESTARTSYS: /* Signal */
+		return (int)end;
+	case 0: /* Tiemout */
+		return -ETIME;
+	default: /* Completed */
+		WARN_ON(end < 0); /* We're not aware of other errors */
+		return 0;
+	}
 }
 
 /**
@@ -2099,9 +2135,7 @@ i915_wait_request(struct intel_ring_buffer *ring,
 	if (ret)
 		return ret;
 
-	ret = __wait_seqno(ring, seqno, dev_priv->mm.interruptible);
-	if (atomic_read(&dev_priv->mm.wedged))
-		ret = -EAGAIN;
+	ret = __wait_seqno(ring, seqno, dev_priv->mm.interruptible, NULL);
 
 	return ret;
 }
@@ -3302,7 +3336,7 @@ i915_gem_ring_throttle(struct drm_device *dev, struct drm_file *file)
 	if (seqno == 0)
 		return 0;
 
-	ret = __wait_seqno(ring, seqno, true);
+	ret = __wait_seqno(ring, seqno, true, NULL);
 	if (ret == 0)
 		queue_delayed_work(dev_priv->wq, &dev_priv->mm.retire_work, 0);
 
