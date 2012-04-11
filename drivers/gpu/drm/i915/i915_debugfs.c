@@ -564,7 +564,8 @@ static int i915_gem_fence_regs_info(struct seq_file *m, void *data)
 	for (i = 0; i < dev_priv->num_fence_regs; i++) {
 		struct drm_i915_gem_object *obj = dev_priv->fence_regs[i].obj;
 
-		seq_printf(m, "Fenced object[%2d] = ", i);
+		seq_printf(m, "Fence %d, pin count = %d, object = ",
+			   i, dev_priv->fence_regs[i].pin_count);
 		if (obj == NULL)
 			seq_printf(m, "unused");
 		else
