@@ -1375,8 +1375,11 @@ void i915_gem_init_global_gtt(struct drm_device *dev,
 			      unsigned long end);
 
 /* i915_gem_evict.c */
-int __must_check i915_gem_evict_something(struct drm_device *dev, int min_size,
-					  unsigned alignment, bool mappable,
+int __must_check i915_gem_evict_something(struct drm_device *dev,
+					  int min_size,
+					  unsigned alignment,
+					  unsigned cache_level,
+					  bool mappable,
 					  bool nonblock);
 int i915_gem_evict_everything(struct drm_device *dev);
 

@@ -2661,6 +2661,36 @@ i915_gem_object_get_fence(struct drm_i915_gem_object *obj)
 	return 0;
 }
 
+static bool i915_gem_valid_gtt_space(struct drm_device *dev,
+				     struct drm_mm_node *gtt_space,
+				     unsigned long cache_level)
+{
+	struct drm_mm_node *other;
+
+	/* On non-LLC machines we have to be careful when putting differing
+	 * types of snoopable memory together to avoid the prefetcher
+	 * crossing memory domains and dieing.
+	 */
+	if (HAS_LLC(dev))
+		return true;
+
+	if (gtt_space == NULL)
+		return true;
+
+	if (list_empty(&gtt_space->node_list))
+		return true;
+
+	other = list_entry(gtt_space->node_list.prev, struct drm_mm_node, node_list);
+	if (other->allocated && !other->hole_follows && other->color != cache_level)
+		return false;
+
+	other = list_entry(gtt_space->node_list.next, struct drm_mm_node, node_list);
+	if (other->allocated && !gtt_space->hole_follows && other->color != cache_level)
+		return false;
+
+	return true;
+}
+
 /**
  * Finds free space in the GTT aperture and binds the object there.
  */
@@ -2720,34 +2750,44 @@ i915_gem_object_bind_to_gtt(struct drm_i915_gem_object *obj,
 	if (map_and_fenceable)
 		free_space =
 			drm_mm_search_free_in_range(&dev_priv->mm.gtt_space,
-						    size, alignment, 0,
+						    size, alignment, obj->cache_level,
 						    0, dev_priv->mm.gtt_mappable_end,
-						    0);
+						    false);
 	else
 		free_space = drm_mm_search_free(&dev_priv->mm.gtt_space,
-						size, alignment, 0, 0);
+						size, alignment, obj->cache_level,
+						false);
 
 	if (free_space != NULL) {
 		if (map_and_fenceable)
 			obj->gtt_space =
 				drm_mm_get_block_range_generic(free_space,
-							       size, alignment, 0,
+							       size, alignment, obj->cache_level,
 							       0, dev_priv->mm.gtt_mappable_end,
-							       0);
+							       false);
 		else
 			obj->gtt_space =
-				drm_mm_get_block(free_space, size, alignment);
+				drm_mm_get_block_generic(free_space,
+							 size, alignment, obj->cache_level,
+							 false);
 	}
 	if (obj->gtt_space == NULL) {
 		ret = i915_gem_evict_something(dev, size, alignment,
-					       map_and_fenceable,
-					       nonblocking);
+					       obj->cache_level,
+					       map_and_fenceable, nonblocking);
 		if (ret)
 			return ret;
 
 		goto search_free;
 	}
 
+	if (WARN_ON(!i915_gem_valid_gtt_space(dev,
+					      obj->gtt_space,
+					      obj->cache_level))) {
+		drm_mm_put_block(obj->gtt_space);
+		obj->gtt_space = NULL;
+		return -EINVAL;
+	}
 
 	ret = i915_gem_gtt_prepare_object(obj);
 	if (ret) {
@@ -2948,6 +2988,12 @@ int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 		return -EBUSY;
 	}
 
+	if (!i915_gem_valid_gtt_space(dev, obj->gtt_space, cache_level)) {
+		ret = i915_gem_object_unbind(obj);
+		if (ret)
+			return ret;
+	}
+
 	if (obj->gtt_space) {
 		ret = i915_gem_object_finish_gpu(obj);
 		if (ret)
@@ -2959,7 +3005,7 @@ int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 		 * registers with snooped memory, so relinquish any fences
 		 * currently pointing to our region in the aperture.
 		 */
-		if (INTEL_INFO(obj->base.dev)->gen < 6) {
+		if (INTEL_INFO(dev)->gen < 6) {
 			ret = i915_gem_object_put_fence(obj);
 			if (ret)
 				return ret;
