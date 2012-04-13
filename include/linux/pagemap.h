@@ -460,7 +460,6 @@ static inline int fault_in_pages_readable(const char __user *uaddr, int size)
  */
 static inline int fault_in_multipages_writeable(char __user *uaddr, int size)
 {
-	int ret;
 	char __user *end = uaddr + size - 1;
 
 	if (unlikely(size == 0))
@@ -471,45 +470,44 @@ static inline int fault_in_multipages_writeable(char __user *uaddr, int size)
 	 * the zero gets there, we'll be overwriting it.
 	 */
 	while (uaddr <= end) {
-		ret = __put_user(0, uaddr);
-		if (ret != 0)
-			return ret;
+		if (__put_user(0, uaddr))
+			return -EFAULT;
 		uaddr += PAGE_SIZE;
 	}
 
 	/* Check whether the range spilled into the next page. */
 	if (((unsigned long)uaddr & PAGE_MASK) ==
 			((unsigned long)end & PAGE_MASK))
-		ret = __put_user(0, end);
+		if (__put_user(0, end))
+			return -EFAULT;
 
-	return ret;
+	return 0;
 }
 
 static inline int fault_in_multipages_readable(const char __user *uaddr,
 					       int size)
 {
 	volatile char c;
-	int ret;
 	const char __user *end = uaddr + size - 1;
 
 	if (unlikely(size == 0))
 		return 0;
 
 	while (uaddr <= end) {
-		ret = __get_user(c, uaddr);
-		if (ret != 0)
-			return ret;
+		if (__get_user(c, uaddr))
+			return -EFAULT;
 		uaddr += PAGE_SIZE;
 	}
 
 	/* Check whether the range spilled into the next page. */
 	if (((unsigned long)uaddr & PAGE_MASK) ==
 			((unsigned long)end & PAGE_MASK)) {
-		ret = __get_user(c, end);
-		(void)c;
+		if (__get_user(c, end))
+			return -EFAULT;
 	}
 
-	return ret;
+	return 0;
+	(void)c;
 }
 
 int add_to_page_cache_locked(struct page *page, struct address_space *mapping,
