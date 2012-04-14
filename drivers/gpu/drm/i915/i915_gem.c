@@ -2337,7 +2337,7 @@ int i915_gpu_idle(struct drm_device *dev)
 	/* Flush everything onto the inactive list. */
 	for_each_ring(ring, dev_priv, i) {
 		ret = i915_ring_idle(ring);
-		if (ret)
+		if (ret && ret != -EIO)
 			return ret;
 
 		/* Is the device fubar? */
