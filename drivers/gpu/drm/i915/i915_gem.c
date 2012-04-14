@@ -2521,7 +2521,7 @@ i915_gem_object_flush_fence(struct drm_i915_gem_object *obj)
 		if (obj->base.write_domain & I915_GEM_GPU_DOMAINS) {
 			ret = i915_gem_flush_ring(obj->ring,
 						  0, obj->base.write_domain);
-			if (ret)
+			if (ret && ret != -EIO)
 				return ret;
 		}
 
@@ -2530,7 +2530,7 @@ i915_gem_object_flush_fence(struct drm_i915_gem_object *obj)
 
 	if (obj->last_fenced_seqno) {
 		ret = i915_wait_request(obj->ring, obj->last_fenced_seqno);
-		if (ret)
+		if (ret && ret != -EIO)
 			return ret;
 
 		obj->last_fenced_seqno = 0;
