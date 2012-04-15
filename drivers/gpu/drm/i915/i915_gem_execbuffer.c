@@ -878,11 +878,17 @@ static int
 i915_gem_execbuffer_move_to_gpu(struct intel_ring_buffer *ring,
 				struct list_head *objects)
 {
+	struct drm_i915_private *dev_priv = ring->dev->dev_private;
 	struct drm_i915_gem_object *obj;
 	struct change_domains cd;
 	int ret;
 
 	memset(&cd, 0, sizeof(cd));
+
+	if (dev_priv->mm.gtt_chipset_flush) {
+		cd.flush_domains = I915_GEM_DOMAIN_CPU;
+		dev_priv->mm.gtt_chipset_flush = false;
+	}
 
 	/* We need to invalidate the BLT's prefetched entries after
 	 * updating the GATT (as the hardware invalidates the wrong PTEs).

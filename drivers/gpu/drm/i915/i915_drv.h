@@ -720,6 +720,12 @@ typedef struct drm_i915_private {
 		bool interruptible;
 
 		/**
+		 * Do we have pending writes from the CPU to the GPU
+		 * that need to be flushed?
+		 */
+		bool gtt_chipset_flush;
+
+		/**
 		 * Flag if the X Server, and thus DRM, is not currently in
 		 * control of the device.
 		 *
@@ -1337,7 +1343,7 @@ void i915_gem_retire_requests(struct drm_device *dev);
 void i915_gem_retire_requests_ring(struct intel_ring_buffer *ring);
 
 void i915_gem_reset(struct drm_device *dev);
-void i915_gem_clflush_object(struct drm_i915_gem_object *obj);
+bool i915_gem_clflush_object(struct drm_i915_gem_object *obj);
 int __must_check i915_gem_object_set_domain(struct drm_i915_gem_object *obj,
 					    uint32_t read_domains,
 					    uint32_t write_domain);

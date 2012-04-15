@@ -38,7 +38,8 @@
 
 static __must_check int i915_gem_object_flush_gpu_write_domain(struct drm_i915_gem_object *obj);
 static void i915_gem_object_flush_gtt_write_domain(struct drm_i915_gem_object *obj);
-static void i915_gem_object_flush_cpu_write_domain(struct drm_i915_gem_object *obj);
+static void i915_gem_object_flush_cpu_write_domain(struct drm_i915_gem_object *obj,
+						   bool flush);
 static __must_check int i915_gem_object_bind_to_gtt(struct drm_i915_gem_object *obj,
 						    unsigned alignment,
 						    bool map_and_fenceable,
@@ -731,6 +732,7 @@ i915_gem_shmem_pwrite(struct drm_device *dev,
 		      struct drm_i915_gem_pwrite *args,
 		      struct drm_file *file)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	ssize_t remain;
 	loff_t offset;
 	char __user *user_data;
@@ -860,13 +862,18 @@ out:
 		/* and flush dirty cachelines in case the object isn't in the cpu write
 		 * domain anymore. */
 		if (obj->base.write_domain != I915_GEM_DOMAIN_CPU) {
-			i915_gem_clflush_object(obj);
-			intel_gtt_chipset_flush();
+			if (i915_gem_clflush_object(obj))
+				needs_clflush_after = true;
 		}
 	}
 
-	if (needs_clflush_after)
-		intel_gtt_chipset_flush();
+	if (needs_clflush_after) {
+		if (obj->pin_count) {
+			intel_gtt_chipset_flush();
+			dev_priv->mm.gtt_chipset_flush = false;
+		} else
+			dev_priv->mm.gtt_chipset_flush = true;
+	}
 
 	return ret;
 }
@@ -1026,7 +1033,7 @@ i915_gem_sw_finish_ioctl(struct drm_device *dev, void *data,
 
 	/* Pinned buffers may be scanout, so flush the cache */
 	if (obj->pin_count)
-		i915_gem_object_flush_cpu_write_domain(obj);
+		i915_gem_object_flush_cpu_write_domain(obj, true);
 
 	drm_gem_object_unreference(&obj->base);
 unlock:
@@ -2886,7 +2893,7 @@ i915_gem_object_bind_to_gtt(struct drm_i915_gem_object *obj,
 	return 0;
 }
 
-void
+bool
 i915_gem_clflush_object(struct drm_i915_gem_object *obj)
 {
 	/* If we don't have a page list set up, then we're not pinned
@@ -2894,7 +2901,7 @@ i915_gem_clflush_object(struct drm_i915_gem_object *obj)
 	 * again at bind time.
 	 */
 	if (obj->pages == NULL)
-		return;
+		return false;
 
 	/* If the GPU is snooping the contents of the CPU cache,
 	 * we do not need to manually clear the CPU cache lines.  However,
@@ -2906,13 +2913,14 @@ i915_gem_clflush_object(struct drm_i915_gem_object *obj)
 	 */
 	if (obj->cache_level != I915_CACHE_NONE) {
 		obj->cache_dirty = obj->cache_level;
-		return;
+		return false;
 	}
 
 	trace_i915_gem_object_clflush(obj);
 
 	drm_clflush_pages(obj->pages, obj->base.size / PAGE_SIZE);
 	obj->cache_dirty = I915_CACHE_NONE;
+	return true;
 }
 
 /** Flushes any GPU write domain for the object if it's dirty. */
@@ -2955,15 +2963,22 @@ i915_gem_object_flush_gtt_write_domain(struct drm_i915_gem_object *obj)
 
 /** Flushes the CPU write domain for the object if it's dirty. */
 static void
-i915_gem_object_flush_cpu_write_domain(struct drm_i915_gem_object *obj)
+i915_gem_object_flush_cpu_write_domain(struct drm_i915_gem_object *obj,
+				       bool flush)
 {
 	uint32_t old_write_domain;
 
 	if (obj->base.write_domain != I915_GEM_DOMAIN_CPU)
 		return;
 
-	i915_gem_clflush_object(obj);
-	intel_gtt_chipset_flush();
+	if (i915_gem_clflush_object(obj)) {
+		struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
+		if (flush)
+			intel_gtt_chipset_flush();
+		else
+			dev_priv->mm.gtt_chipset_flush = true;
+	}
+
 	old_write_domain = obj->base.write_domain;
 	obj->base.write_domain = 0;
 
@@ -3015,7 +3030,7 @@ i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj, bool write)
 	if (ret)
 		return ret;
 
-	i915_gem_object_flush_cpu_write_domain(obj);
+	i915_gem_object_flush_cpu_write_domain(obj, obj->pin_count);
 
 	old_write_domain = obj->base.write_domain;
 	old_read_domains = obj->base.read_domains;
@@ -3158,7 +3173,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	if (ret)
 		return ret;
 
-	i915_gem_object_flush_cpu_write_domain(obj);
+	i915_gem_object_flush_cpu_write_domain(obj, true);
 
 	old_write_domain = obj->base.write_domain;
 	old_read_domains = obj->base.read_domains;
@@ -3389,7 +3404,7 @@ i915_gem_pin_ioctl(struct drm_device *dev, void *data,
 	/* XXX - flush the CPU caches for pinned objects
 	 * as the X server doesn't manage domains yet
 	 */
-	i915_gem_object_flush_cpu_write_domain(obj);
+	i915_gem_object_flush_cpu_write_domain(obj, true);
 	args->offset = obj->gtt_offset;
 out:
 	drm_gem_object_unreference(&obj->base);
@@ -4091,9 +4106,11 @@ void i915_gem_free_all_phys_object(struct drm_device *dev)
 		i915_gem_free_phys_object(dev, i);
 }
 
+
 void i915_gem_detach_phys_object(struct drm_device *dev,
 				 struct drm_i915_gem_object *obj)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct address_space *mapping = obj->base.filp->f_path.dentry->d_inode->i_mapping;
 	char *vaddr;
 	int i;
@@ -4119,6 +4136,7 @@ void i915_gem_detach_phys_object(struct drm_device *dev,
 		}
 	}
 	intel_gtt_chipset_flush();
+	dev_priv->mm.gtt_chipset_flush = false;
 
 	obj->phys_obj->cur_obj = NULL;
 	obj->phys_obj = NULL;
@@ -4188,6 +4206,7 @@ i915_gem_phys_pwrite(struct drm_device *dev,
 		     struct drm_i915_gem_pwrite *args,
 		     struct drm_file *file_priv)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	void *vaddr = obj->phys_obj->handle->vaddr + args->offset;
 	char __user *user_data = (char __user *) (uintptr_t) args->data_ptr;
 
@@ -4206,6 +4225,7 @@ i915_gem_phys_pwrite(struct drm_device *dev,
 	}
 
 	intel_gtt_chipset_flush();
+	dev_priv->mm.gtt_chipset_flush = false;
 	return 0;
 }
 
