@@ -883,6 +883,13 @@ i915_gem_execbuffer_move_to_gpu(struct intel_ring_buffer *ring,
 	int ret;
 
 	memset(&cd, 0, sizeof(cd));
+
+	/* We need to invalidate the BLT's prefetched entries after
+	 * updating the GATT (as the hardware invalidates the wrong PTEs).
+	 */
+	if (IS_I830(ring->dev) || IS_845G(ring->dev))
+		cd.invalidate_domains = I915_GEM_DOMAIN_RENDER;
+
 	list_for_each_entry(obj, objects, exec_list)
 		i915_gem_object_set_to_gpu_domain(obj, ring, &cd);
 
