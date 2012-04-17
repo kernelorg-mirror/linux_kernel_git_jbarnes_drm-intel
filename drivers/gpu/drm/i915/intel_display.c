@@ -5842,10 +5842,7 @@ static void intel_crtc_destroy(struct drm_crtc *crtc)
 	intel_crtc->unpin_work = NULL;
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 
-	if (work) {
-		cancel_work_sync(&work->work);
-		kfree(work);
-	}
+	kfree(work);
 
 	drm_crtc_cleanup(crtc);
 
