@@ -1856,6 +1856,7 @@ intel_pin_and_fence_fb_obj(struct drm_device *dev,
 		goto err_unpin;
 
 	i915_gem_object_pin_fence(obj);
+	drm_gem_object_reference(&obj->base);
 
 	dev_priv->mm.interruptible = true;
 	return 0;
@@ -1871,6 +1872,7 @@ void intel_unpin_fb_obj(struct drm_i915_gem_object *obj)
 {
 	i915_gem_object_unpin_fence(obj);
 	i915_gem_object_unpin(obj);
+	drm_gem_object_unreference(&obj->base);
 }
 
 static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
@@ -2066,6 +2068,26 @@ intel_finish_fb(struct drm_framebuffer *old_fb)
 	return ret;
 }
 
+static void intel_crtc_unpin_work_fn(struct intel_crtc *crtc, void *obj)
+{
+	struct drm_device *dev = crtc->base.dev;
+
+	mutex_lock(&dev->struct_mutex);
+	intel_unpin_fb_obj(obj);
+	mutex_unlock(&dev->struct_mutex);
+}
+
+static void
+intel_crtc_queue_unpin(struct intel_crtc *crtc,
+		       struct drm_i915_gem_object *obj)
+{
+	if (intel_crtc_add_vblank_task(crtc, false,
+				       intel_crtc_unpin_work_fn, obj)) {
+		intel_wait_for_vblank(crtc->base.dev, crtc->pipe);
+		intel_unpin_fb_obj(obj);
+	}
+}
+
 static int
 intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		    struct drm_framebuffer *old_fb)
@@ -2110,10 +2132,9 @@ intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		return ret;
 	}
 
-	if (old_fb) {
-		intel_wait_for_vblank(dev, intel_crtc->pipe);
-		intel_unpin_fb_obj(to_intel_framebuffer(old_fb)->obj);
-	}
+	if (old_fb)
+		intel_crtc_queue_unpin(intel_crtc,
+				       to_intel_framebuffer(old_fb)->obj);
 
 	intel_update_fbc(dev);
 	mutex_unlock(&dev->struct_mutex);
