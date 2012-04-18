@@ -3055,12 +3055,12 @@ i915_gem_object_finish_gpu(struct drm_i915_gem_object *obj)
 
 	if (obj->base.write_domain & I915_GEM_GPU_DOMAINS) {
 		ret = i915_gem_flush_ring(obj->ring, 0, obj->base.write_domain);
-		if (ret)
+		if (ret && ret != -EIO)
 			return ret;
 	}
 
 	ret = i915_gem_object_wait_rendering(obj);
-	if (ret)
+	if (ret && ret != -EIO)
 		return ret;
 
 	/* Ensure that we invalidate the GPU's caches and TLBs. */
