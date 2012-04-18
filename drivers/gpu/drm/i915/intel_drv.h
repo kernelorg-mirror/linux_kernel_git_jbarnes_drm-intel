@@ -174,6 +174,12 @@ struct intel_crtc {
 	struct intel_unpin_work *unpin_work;
 	int fdi_lanes;
 
+	struct intel_crtc_vblank_work {
+		struct work_struct work;
+		struct mutex mutex;
+		struct list_head tasks;
+	} vblank_work;
+
 	struct drm_i915_gem_object *cursor_bo;
 	uint32_t cursor_addr;
 	int16_t cursor_x, cursor_y;

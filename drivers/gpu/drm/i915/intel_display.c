@@ -836,6 +836,74 @@ void intel_wait_for_vblank(struct drm_device *dev, int pipe)
 		DRM_DEBUG_KMS("vblank wait timed out\n");
 }
 
+struct intel_crtc_vblank_task {
+	struct list_head list;
+	void (*func)(struct intel_crtc *, void *data);
+	void *data;
+};
+
+static void intel_crtc_vblank_work_fn(struct work_struct *_work)
+{
+	struct intel_crtc_vblank_work *work =
+		container_of(_work, struct intel_crtc_vblank_work, work);
+	struct intel_crtc *crtc =
+		container_of(work, struct intel_crtc, vblank_work);
+	struct list_head tasks;
+
+	intel_wait_for_vblank(crtc->base.dev, crtc->pipe);
+
+	mutex_lock(&crtc->vblank_work.mutex);
+	list_replace_init(&work->tasks, &tasks);
+	mutex_unlock(&crtc->vblank_work.mutex);
+
+	while (!list_empty(&tasks)) {
+		struct intel_crtc_vblank_task *task
+			= list_first_entry(&tasks,
+					   struct intel_crtc_vblank_task,
+					   list);
+
+		task->func(crtc, task->data);
+		list_del(&task->list);
+		kfree(task);
+	}
+}
+
+static int intel_crtc_add_vblank_task(struct intel_crtc *crtc,
+				      bool single,
+				      void (*func)(struct intel_crtc *,
+						   void *data),
+				      void *data)
+{
+	struct intel_crtc_vblank_task *task;
+	struct intel_crtc_vblank_work *work = &crtc->vblank_work;
+
+	task = kzalloc(sizeof *task, GFP_KERNEL);
+	if (task == NULL)
+		return -ENOMEM;
+	task->func = func;
+	task->data = data;
+
+	mutex_lock(&work->mutex);
+	if (list_empty(&work->tasks)) {
+		schedule_work(&work->work);
+	} else if (single) {
+		struct intel_crtc_vblank_task *old;
+		list_for_each_entry(old, &work->tasks, list) {
+			if (task->func == func && task->data == data) {
+				func = NULL;
+				break;
+			}
+		}
+	}
+	if (func)
+		list_add(&task->list, &work->tasks);
+	else
+		kfree(task);
+	mutex_unlock(&work->mutex);
+
+	return 0;
+}
+
 /*
  * intel_wait_for_pipe_off - wait for pipe to turn off
  * @dev: drm device
@@ -2625,6 +2693,8 @@ static void ironlake_fdi_disable(struct drm_crtc *crtc)
 static void intel_crtc_wait_for_pending_flips(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
+
+	flush_work_sync(&to_intel_crtc(crtc)->vblank_work.work);
 
 	if (crtc->fb == NULL)
 		return;
@@ -6266,6 +6336,10 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	if (intel_crtc == NULL)
 		return;
 
+	mutex_init(&intel_crtc->vblank_work.mutex);
+	INIT_LIST_HEAD(&intel_crtc->vblank_work.tasks);
+	INIT_WORK(&intel_crtc->vblank_work.work, intel_crtc_vblank_work_fn);
+
 	drm_crtc_init(dev, &intel_crtc->base, &intel_crtc_funcs);
 
 	drm_mode_crtc_set_gamma_size(&intel_crtc->base, 256);
@@ -6880,6 +6954,9 @@ void intel_modeset_cleanup(struct drm_device *dev)
 	struct drm_crtc *crtc;
 	struct intel_crtc *intel_crtc;
 
+	/* Clear the vblank worker prior to taking any locks */
+	flush_scheduled_work();
+
 	drm_kms_helper_poll_fini(dev);
 	mutex_lock(&dev->struct_mutex);
 
@@ -6887,6 +6964,8 @@ void intel_modeset_cleanup(struct drm_device *dev)
 
 
 	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		flush_work_sync(&to_intel_crtc(crtc)->vblank_work.work);
+
 		/* Skip inactive CRTCs */
 		if (!crtc->fb)
 			continue;
