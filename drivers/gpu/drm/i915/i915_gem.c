@@ -2167,6 +2167,61 @@ i915_gem_object_wait_rendering(struct drm_i915_gem_object *obj)
 	return 0;
 }
 
+int
+i915_gem_wait_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
+{
+	struct drm_i915_gem_wait *args = data;
+	struct drm_i915_gem_object *obj;
+	struct intel_ring_buffer *ring = NULL;
+	long timeout;
+	u32 seqno = 0;
+	int ret = 0;
+
+	/* For now timeout is microseconds only */
+	timeout = (long)DIV_ROUND_UP_ULL(args->timeout_ns, NSEC_PER_USEC);
+
+	ret = i915_mutex_lock_interruptible(dev);
+	if (ret)
+		return ret;
+
+	obj = to_intel_bo(drm_gem_object_lookup(dev, file, args->bo_handle));
+	if (&obj->base == NULL) {
+		mutex_unlock(&dev->struct_mutex);
+		return -ENOENT;
+	}
+
+	/* Need to make sure the object is flushed first. This non-obvious
+	 * flush is required to enforce that (active && !olr) == no wait
+	 * necessary.
+	 */
+	ret = i915_gem_object_flush_gpu_write_domain(obj);
+	if (ret)
+		goto out;
+
+	if (obj->active) {
+		seqno = obj->last_rendering_seqno;
+		ring = obj->ring;
+	}
+
+	if (seqno == 0)
+		 goto out;
+
+	ret = i915_gem_check_olr(ring, &seqno);
+	if (ret)
+		goto out;
+
+	mutex_unlock(&dev->struct_mutex);
+	ret = __wait_seqno(ring, seqno, true, &timeout);
+	drm_gem_object_unreference_unlocked(&obj->base);
+	args->timeout_ns = timeout * NSEC_PER_USEC;
+	return ret;
+
+out:
+	drm_gem_object_unreference(&obj->base);
+	mutex_unlock(&dev->struct_mutex);
+	return ret;
+}
+
 /**
  * i915_gem_object_sync - sync an object to a ring.
  *
