@@ -6480,9 +6480,6 @@ static void intel_setup_outputs(struct drm_device *dev)
 			intel_encoder_clones(dev, encoder->clone_mask);
 	}
 
-	/* disable all the possible outputs/crtcs before entering KMS mode */
-	drm_helper_disable_unused_functions(dev);
-
 	if (HAS_PCH_SPLIT(dev))
 		ironlake_init_pch_refclk(dev);
 }

@@ -233,19 +233,127 @@ static void intel_fbdev_destroy(struct drm_device *dev,
 	}
 }
 
+void intel_fbdev_init_bios(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_fbdev *ifbdev;
+	int pipe, ret;
+
+	for_each_pipe(pipe) {
+		struct intel_crtc *crtc = to_intel_crtc(dev_priv->pipe_to_crtc_mapping[pipe]);
+		struct drm_mode_fb_cmd2 mode_cmd;
+		struct drm_i915_gem_object *obj;
+		struct fb_info *info;
+		u32 val, bpp, depth;
+		u32 size, offset;
+
+		val = I915_READ(DSPCNTR(crtc->plane));
+		if ((val & DISPLAY_PLANE_ENABLE) == 0)
+			continue;
+
+		if (INTEL_INFO(dev)->gen >= 4) {
+			if (val & DISPPLANE_TILED)
+				continue; /* unexpected! */
+		}
+
+		switch (val & DISPPLANE_PIXFORMAT_MASK) {
+		default:
+		case DISPPLANE_8BPP:
+			continue; /* ignore palettes */
+		case DISPPLANE_15_16BPP:
+			depth = 15; bpp = 16;
+			break;
+		case DISPPLANE_16BPP:
+			depth = bpp = 16;
+			break;
+		case DISPPLANE_32BPP_NO_ALPHA:
+			depth = 24; bpp = 32;
+			break;
+		}
+
+		if (INTEL_INFO(dev)->gen >= 4)
+			offset = I915_READ(DSPSURF(crtc->plane));
+		else
+			offset = I915_READ(DSPADDR(crtc->plane));
+		mode_cmd.pitches[0] = I915_READ(DSPSTRIDE(crtc->plane));
+
+		val = I915_READ(PIPESRC(crtc->pipe));
+		mode_cmd.width = ((val >> 16) & 0xfff) + 1;
+		mode_cmd.height = ((val >> 0) & 0xfff) + 1;
+		mode_cmd.pixel_format = drm_mode_legacy_fb_format(bpp, depth);
+
+		DRM_DEBUG_KMS("Found active pipe [%d/%d]: size=%dx%d@%d, offset=%x\n",
+			      crtc->pipe, crtc->plane,
+			      mode_cmd.width, mode_cmd.height, depth, offset);
+
+		size = mode_cmd.pitches[0] * mode_cmd.height;
+		size = ALIGN(size, PAGE_SIZE);
+
+		ifbdev = kzalloc(sizeof(struct intel_fbdev), GFP_KERNEL);
+		if (!ifbdev)
+			continue;
+
+		ifbdev->helper.funcs = &intel_fb_helper_funcs;
+		ret = drm_fb_helper_init(dev, &ifbdev->helper,
+					 dev_priv->num_pipe,
+					 INTELFB_CONN_LIMIT);
+		if (ret) {
+			kfree(ifbdev);
+			continue;
+		}
+
+		/* assume a 1:1 linear mapping between stolen and GTT */
+		obj = i915_gem_object_create_stolen_for_preallocated
+			(dev, offset, offset, size);
+		if (obj == NULL) {
+			kfree(ifbdev);
+			continue;
+		}
+
+		ret = intel_framebuffer_init(dev, &ifbdev->ifb, &mode_cmd, obj);
+		if (ret) {
+			drm_gem_object_unreference(&obj->base);
+			kfree(ifbdev);
+			continue;
+		}
+
+		info = intelfb_create_info(ifbdev);
+		if (info == NULL) {
+			drm_gem_object_unreference(&obj->base);
+			kfree(ifbdev);
+			continue;
+		}
+
+		crtc->base.fb = &ifbdev->ifb.base;
+		obj->pin_count++;
+
+		drm_fb_helper_single_add_all_connectors(&ifbdev->helper);
+		drm_fb_helper_hotplug_event(&ifbdev->helper);
+
+		vga_switcheroo_client_fb_set(dev->pdev, info);
+		dev_priv->fbdev = ifbdev;
+		return;
+	}
+
+	/* otherwise disable all the possible crtcs before KMS */
+	DRM_DEBUG_KMS("No active planes found\n");
+	drm_helper_disable_unused_functions(dev);
+}
+
 int intel_fbdev_init(struct drm_device *dev)
 {
-	struct intel_fbdev *ifbdev;
 	drm_i915_private_t *dev_priv = dev->dev_private;
+	struct intel_fbdev *ifbdev;
 	int ret;
 
+	if (dev_priv->fbdev)
+		return 0;
+
 	ifbdev = kzalloc(sizeof(struct intel_fbdev), GFP_KERNEL);
-	if (!ifbdev)
+	if (ifbdev == NULL)
 		return -ENOMEM;
 
-	dev_priv->fbdev = ifbdev;
 	ifbdev->helper.funcs = &intel_fb_helper_funcs;
-
 	ret = drm_fb_helper_init(dev, &ifbdev->helper,
 				 dev_priv->num_pipe,
 				 INTELFB_CONN_LIMIT);
@@ -253,6 +361,8 @@ int intel_fbdev_init(struct drm_device *dev)
 		kfree(ifbdev);
 		return ret;
 	}
+
+	dev_priv->fbdev = ifbdev;
 
 	drm_fb_helper_single_add_all_connectors(&ifbdev->helper);
 	drm_fb_helper_initial_config(&ifbdev->helper, 32);

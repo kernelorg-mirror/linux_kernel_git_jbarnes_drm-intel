@@ -1309,6 +1309,9 @@ static int i915_load_modeset_init(struct drm_device *dev)
 
 	intel_modeset_init(dev);
 
+	/* Wrap existing BIOS mode configuration prior to GEM takeover */
+	intel_fbdev_init_bios(dev);
+
 	ret = i915_gem_init(dev);
 	if (ret)
 		goto cleanup_gem_stolen;
@@ -1323,6 +1326,7 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	/* FIXME: do pre/post-mode set stuff in core KMS code */
 	dev->vblank_disable_allowed = 1;
 
+	/* Install a default KMS/GEM fbcon if we failed to wrap the BIOS fb */
 	ret = intel_fbdev_init(dev);
 	if (ret)
 		goto cleanup_irq;
