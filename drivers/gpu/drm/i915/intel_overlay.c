@@ -205,6 +205,7 @@ intel_overlay_map_regs(struct intel_overlay *overlay)
 static void intel_overlay_unmap_regs(struct intel_overlay *overlay,
 				     struct overlay_registers __iomem *regs)
 {
+	ioread32(regs); mb(); /* flush all writes */
 	if (!OVERLAY_NEEDS_PHYSICAL(overlay->dev))
 		io_mapping_unmap(regs);
 }
@@ -293,9 +294,6 @@ static int intel_overlay_on(struct intel_overlay *overlay)
 	int pipe_a_quirk = 0;
 	int ret;
 
-	BUG_ON(overlay->active);
-	overlay->active = 1;
-
 	if (IS_I830(dev)) {
 		pipe_a_quirk = i830_activate_pipe_a(dev);
 		if (pipe_a_quirk < 0)
@@ -320,6 +318,8 @@ static int intel_overlay_on(struct intel_overlay *overlay)
 	intel_ring_emit(ring, MI_NOOP);
 	intel_ring_advance(ring);
 
+	overlay->active = 1;
+
 	ret = intel_overlay_do_wait_request(overlay, request, NULL);
 out:
 	if (pipe_a_quirk)
@@ -339,8 +339,6 @@ static int intel_overlay_continue(struct intel_overlay *overlay,
 	u32 flip_addr = overlay->flip_addr;
 	u32 tmp;
 	int ret;
-
-	BUG_ON(!overlay->active);
 
 	request = kzalloc(sizeof(*request), GFP_KERNEL);
 	if (request == NULL)
@@ -396,7 +394,6 @@ static void intel_overlay_off_tail(struct intel_overlay *overlay)
 
 	overlay->crtc->overlay = NULL;
 	overlay->crtc = NULL;
-	overlay->active = 0;
 }
 
 /* overlay needs to be disabled in OCMD reg */
@@ -435,6 +432,8 @@ static int intel_overlay_off(struct intel_overlay *overlay)
 	intel_ring_emit(ring, flip_addr);
 	intel_ring_emit(ring, MI_WAIT_FOR_EVENT | MI_WAIT_FOR_OVERLAY_FLIP);
 	intel_ring_advance(ring);
+
+	overlay->active = 0;
 
 	return intel_overlay_do_wait_request(overlay, request,
 					     intel_overlay_off_tail);
@@ -794,26 +793,6 @@ static int intel_overlay_do_put_image(struct intel_overlay *overlay,
 	if (ret)
 		goto out_unpin;
 
-	if (!overlay->active) {
-		u32 oconfig;
-		regs = intel_overlay_map_regs(overlay);
-		if (!regs) {
-			ret = -ENOMEM;
-			goto out_unpin;
-		}
-		oconfig = OCONF_CC_OUT_8BIT;
-		if (IS_GEN4(overlay->dev))
-			oconfig |= OCONF_CSC_MODE_BT709;
-		oconfig |= overlay->crtc->pipe == 0 ?
-			OCONF_PIPE_A : OCONF_PIPE_B;
-		iowrite32(oconfig, &regs->OCONFIG);
-		intel_overlay_unmap_regs(overlay, regs);
-
-		ret = intel_overlay_on(overlay);
-		if (ret != 0)
-			goto out_unpin;
-	}
-
 	regs = intel_overlay_map_regs(overlay);
 	if (!regs) {
 		ret = -ENOMEM;
@@ -861,9 +840,23 @@ static int intel_overlay_do_put_image(struct intel_overlay *overlay,
 
 	iowrite32(overlay_cmd_reg(params), &regs->OCMD);
 
+	if (!overlay->active) {
+		u32 oconfig;
+
+		oconfig = OCONF_CC_OUT_8BIT;
+		if (IS_GEN4(overlay->dev))
+			oconfig |= OCONF_CSC_MODE_BT709;
+		if (overlay->crtc->pipe)
+			oconfig |= OCONF_PIPE_B;
+		iowrite32(oconfig, &regs->OCONFIG);
+	}
+
 	intel_overlay_unmap_regs(overlay, regs);
 
-	ret = intel_overlay_continue(overlay, scale_changed);
+	if (!overlay->active)
+		ret = intel_overlay_on(overlay);
+	else
+		ret = intel_overlay_continue(overlay, scale_changed);
 	if (ret)
 		goto out_unpin;
 
