@@ -841,6 +841,8 @@ enum i915_cache_level {
 	I915_CACHE_LLC_MLC, /* gen6+ */
 };
 
+#define I915_GTT_RESERVED ((struct drm_mm_node *)0x1)
+
 struct drm_i915_gem_object {
 	struct drm_gem_object base;
 
