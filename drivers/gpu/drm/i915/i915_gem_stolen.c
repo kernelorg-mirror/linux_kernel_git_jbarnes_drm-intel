@@ -293,6 +293,64 @@ i915_gem_object_create_stolen(struct drm_device *dev, u32 size)
 	return NULL;
 }
 
+struct drm_i915_gem_object *
+i915_gem_object_create_stolen_for_preallocated(struct drm_device *dev,
+					       u32 stolen_offset,
+					       u32 gtt_offset,
+					       u32 size)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_gem_object *obj;
+	struct drm_mm_node *stolen;
+
+	if (dev_priv->mm.stolen_base == 0)
+		return 0;
+
+	DRM_DEBUG_KMS("creating preallocated stolen object: stolen_offset=%x, gtt_offset=%x, size=%x\n",
+			stolen_offset, gtt_offset, size);
+	if (size == 0)
+		return NULL;
+
+	stolen = drm_mm_create_block(&dev_priv->mm.stolen,
+				     stolen_offset, size,
+				     false);
+	if (stolen == NULL)
+		return NULL;
+
+	obj = _i915_gem_object_create_stolen(dev, stolen);
+	if (obj == NULL)
+		goto cleanup;
+
+	/* To simplify the initialisation sequence between KMS and GTT,
+	 * we allow construction of the stolen object prior to
+	 * setting up the GTT space. The actual reservation will occur
+	 * later.
+	 */
+	if (drm_mm_initialized(&dev_priv->mm.gtt_space)) {
+		obj->gtt_space = drm_mm_create_block(&dev_priv->mm.gtt_space,
+						     gtt_offset, size,
+						     false);
+		if (obj->gtt_space == NULL)
+			goto cleanup_obj;
+	} else
+		obj->gtt_space = I915_GTT_RESERVED;
+
+	obj->gtt_offset = gtt_offset;
+	obj->has_global_gtt_mapping = 1;
+
+	list_add_tail(&obj->gtt_list, &dev_priv->mm.gtt_list);
+	list_add_tail(&obj->mm_list, &dev_priv->mm.inactive_list);
+
+	return obj;
+
+cleanup_obj:
+	kfree(obj->sg_list);
+	kfree(obj);
+cleanup:
+	drm_mm_put_block(stolen);
+	return NULL;
+}
+
 void
 i915_gem_object_release_stolen(struct drm_i915_gem_object *obj)
 {
