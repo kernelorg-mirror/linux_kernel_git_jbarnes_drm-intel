@@ -1247,7 +1247,6 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 			ret = i915_gpu_idle(dev);
 			if (ret)
 				goto err;
-			i915_gem_retire_requests(dev);
 
 			BUG_ON(ring->sync_seqno[i]);
 		}
