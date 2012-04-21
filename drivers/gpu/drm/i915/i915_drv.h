@@ -1241,6 +1241,7 @@ int i915_gem_init_object(struct drm_gem_object *obj);
 int __must_check i915_gem_flush_ring(struct intel_ring_buffer *ring,
 				     uint32_t invalidate_domains,
 				     uint32_t flush_domains);
+void i915_gem_object_init(struct drm_i915_gem_object *obj);
 struct drm_i915_gem_object *i915_gem_alloc_object(struct drm_device *dev,
 						  size_t size);
 void i915_gem_free_object(struct drm_gem_object *obj);
