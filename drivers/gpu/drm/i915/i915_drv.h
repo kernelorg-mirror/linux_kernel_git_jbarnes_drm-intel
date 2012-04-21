@@ -1378,6 +1378,7 @@ int i915_gem_evict_everything(struct drm_device *dev);
 
 /* i915_gem_stolen.c */
 int i915_gem_init_stolen(struct drm_device *dev);
+int i915_gem_stolen_setup_compression(struct drm_device *dev);
 void i915_gem_cleanup_stolen(struct drm_device *dev);
 
 /* i915_gem_tiling.c */

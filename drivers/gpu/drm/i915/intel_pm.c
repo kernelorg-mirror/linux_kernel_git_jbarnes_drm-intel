@@ -438,12 +438,6 @@ void intel_update_fbc(struct drm_device *dev)
 		dev_priv->no_fbc_reason = FBC_MODULE_PARAM;
 		goto out_disable;
 	}
-	if (intel_fb->obj->base.size > dev_priv->cfb_size) {
-		DRM_DEBUG_KMS("framebuffer too large, disabling "
-			      "compression\n");
-		dev_priv->no_fbc_reason = FBC_STOLEN_TOO_SMALL;
-		goto out_disable;
-	}
 	if ((crtc->mode.flags & DRM_MODE_FLAG_INTERLACE) ||
 	    (crtc->mode.flags & DRM_MODE_FLAG_DBLSCAN)) {
 		DRM_DEBUG_KMS("mode incompatible with compression, "
@@ -476,6 +470,13 @@ void intel_update_fbc(struct drm_device *dev)
 	/* If the kernel debugger is active, always disable compression */
 	if (in_dbg_master())
 		goto out_disable;
+
+	if (intel_fb->obj->base.size > i915_gem_stolen_setup_compression(dev)) {
+		DRM_DEBUG_KMS("framebuffer too large, disabling "
+			      "compression\n");
+		dev_priv->no_fbc_reason = FBC_STOLEN_TOO_SMALL;
+		goto out_disable;
+	}
 
 	/* If the scanout has not changed, don't modify the FBC settings.
 	 * Note that we make the fundamental assumption that the fb->obj
