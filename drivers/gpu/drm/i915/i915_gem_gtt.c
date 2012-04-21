@@ -249,8 +249,6 @@ void i915_ppgtt_bind_object(struct i915_hw_ppgtt *ppgtt,
 			    struct drm_i915_gem_object *obj,
 			    enum i915_cache_level cache_level)
 {
-	struct drm_device *dev = obj->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t pte_flags = GEN6_PTE_VALID;
 
 	switch (cache_level) {
@@ -267,20 +265,20 @@ void i915_ppgtt_bind_object(struct i915_hw_ppgtt *ppgtt,
 		BUG();
 	}
 
-	if (dev_priv->mm.gtt->needs_dmar) {
-		BUG_ON(!obj->sg_list);
-
+	if (obj->sg_list) {
 		i915_ppgtt_insert_sg_entries(ppgtt,
 					     obj->sg_list,
 					     obj->num_sg,
 					     obj->gtt_space->start >> PAGE_SHIFT,
 					     pte_flags);
-	} else
+	} else {
+		BUG_ON(!obj->pages);
 		i915_ppgtt_insert_pages(ppgtt,
 					obj->gtt_space->start >> PAGE_SHIFT,
 					obj->base.size >> PAGE_SHIFT,
 					obj->pages,
 					pte_flags);
+	}
 }
 
 void i915_ppgtt_unbind_object(struct i915_hw_ppgtt *ppgtt,
@@ -368,21 +366,20 @@ void i915_gem_gtt_bind_object(struct drm_i915_gem_object *obj,
 			      enum i915_cache_level cache_level)
 {
 	struct drm_device *dev = obj->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned int agp_type = cache_level_to_agp_type(dev, cache_level);
 
-	if (dev_priv->mm.gtt->needs_dmar) {
-		BUG_ON(!obj->sg_list);
-
+	if (obj->sg_list) {
 		intel_gtt_insert_sg_entries(obj->sg_list,
 					    obj->num_sg,
 					    obj->gtt_space->start >> PAGE_SHIFT,
 					    agp_type);
-	} else
+	} else {
+		BUG_ON(!obj->pages);
 		intel_gtt_insert_pages(obj->gtt_space->start >> PAGE_SHIFT,
 				       obj->base.size >> PAGE_SHIFT,
 				       obj->pages,
 				       agp_type);
+	}
 
 	obj->has_global_gtt_mapping = 1;
 }
