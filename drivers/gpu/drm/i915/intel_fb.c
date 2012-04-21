@@ -58,16 +58,74 @@ static struct fb_ops intelfb_ops = {
 	.fb_debug_leave = drm_fb_helper_debug_leave,
 };
 
+static struct fb_info *intelfb_create_info(struct intel_fbdev *ifbdev)
+{
+	struct drm_framebuffer *fb = &ifbdev->ifb.base;
+	struct drm_device *dev = fb->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct fb_info *info;
+	u32 gtt_offset, size;
+	int ret;
+
+	info = framebuffer_alloc(0, &dev->pdev->dev);
+	if (!info)
+		return NULL;
+
+	info->par = ifbdev;
+	ifbdev->helper.fb = fb;
+	ifbdev->helper.fbdev = info;
+
+	strcpy(info->fix.id, "inteldrmfb");
+
+	info->flags = FBINFO_DEFAULT | FBINFO_CAN_FORCE_OUTPUT;
+	info->fbops = &intelfb_ops;
+
+	ret = fb_alloc_cmap(&info->cmap, 256, 0);
+	if (ret)
+		goto err_info;
+
+	/* setup aperture base/size for vesafb takeover */
+	info->apertures = alloc_apertures(1);
+	if (!info->apertures)
+		goto err_cmap;
+
+	info->apertures->ranges[0].base = dev->mode_config.fb_base;
+	info->apertures->ranges[0].size =
+		dev_priv->mm.gtt->gtt_mappable_entries << PAGE_SHIFT;
+
+	gtt_offset = ifbdev->ifb.obj->gtt_offset;
+	size = ifbdev->ifb.obj->base.size;
+
+	info->fix.smem_start = dev->mode_config.fb_base + gtt_offset;
+	info->fix.smem_len = size;
+
+	info->screen_size = size;
+	info->screen_base = ioremap_wc(dev->agp->base + gtt_offset, size);
+	if (!info->screen_base)
+		goto err_cmap;
+
+	/* Use default scratch pixmap (info->pixmap.flags = FB_PIXMAP_SYSTEM) */
+
+	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
+	drm_fb_helper_fill_var(info, &ifbdev->helper, fb->width, fb->height);
+
+	return info;
+
+err_cmap:
+	if (info->cmap.len)
+		fb_dealloc_cmap(&info->cmap);
+err_info:
+	framebuffer_release(info);
+	return NULL;
+}
+
 static int intelfb_create(struct intel_fbdev *ifbdev,
 			  struct drm_fb_helper_surface_size *sizes)
 {
 	struct drm_device *dev = ifbdev->helper.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct fb_info *info;
-	struct drm_framebuffer *fb;
 	struct drm_mode_fb_cmd2 mode_cmd;
 	struct drm_i915_gem_object *obj;
-	struct device *device = &dev->pdev->dev;
+	struct fb_info *info;
 	int size, ret;
 
 	/* we don't do packed 24bpp */
@@ -102,64 +160,19 @@ static int intelfb_create(struct intel_fbdev *ifbdev,
 		goto out_unref;
 	}
 
-	info = framebuffer_alloc(0, device);
-	if (!info) {
-		ret = -ENOMEM;
-		goto out_unpin;
-	}
-
-	info->par = ifbdev;
-
 	ret = intel_framebuffer_init(dev, &ifbdev->ifb, &mode_cmd, obj);
 	if (ret)
 		goto out_unpin;
 
-	fb = &ifbdev->ifb.base;
-
-	ifbdev->helper.fb = fb;
-	ifbdev->helper.fbdev = info;
-
-	strcpy(info->fix.id, "inteldrmfb");
-
-	info->flags = FBINFO_DEFAULT | FBINFO_CAN_FORCE_OUTPUT;
-	info->fbops = &intelfb_ops;
-
-	ret = fb_alloc_cmap(&info->cmap, 256, 0);
-	if (ret) {
-		ret = -ENOMEM;
-		goto out_unpin;
-	}
-	/* setup aperture base/size for vesafb takeover */
-	info->apertures = alloc_apertures(1);
-	if (!info->apertures) {
-		ret = -ENOMEM;
-		goto out_unpin;
-	}
-	info->apertures->ranges[0].base = dev->mode_config.fb_base;
-	info->apertures->ranges[0].size =
-		dev_priv->mm.gtt->gtt_mappable_entries << PAGE_SHIFT;
-
-	info->fix.smem_start = dev->mode_config.fb_base + obj->gtt_offset;
-	info->fix.smem_len = size;
-
-	info->screen_base = ioremap_wc(dev->agp->base + obj->gtt_offset, size);
-	if (!info->screen_base) {
-		ret = -ENOSPC;
-		goto out_unpin;
-	}
-	info->screen_size = size;
-
-//	memset(info->screen_base, 0, size);
-
-	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
-	drm_fb_helper_fill_var(info, &ifbdev->helper, sizes->fb_width, sizes->fb_height);
-
-	/* Use default scratch pixmap (info->pixmap.flags = FB_PIXMAP_SYSTEM) */
-
 	DRM_DEBUG_KMS("allocated %dx%d fb: 0x%08x, bo %p\n",
-		      fb->width, fb->height,
+		      mode_cmd.width, mode_cmd.height,
 		      obj->gtt_offset, obj);
 
+	info = intelfb_create_info(ifbdev);
+	if (info == NULL) {
+		ret = -ENOMEM;
+		goto out_unpin;
+	}
 
 	mutex_unlock(&dev->struct_mutex);
 	vga_switcheroo_client_fb_set(dev->pdev, info);
@@ -199,11 +212,11 @@ static struct drm_fb_helper_funcs intel_fb_helper_funcs = {
 static void intel_fbdev_destroy(struct drm_device *dev,
 				struct intel_fbdev *ifbdev)
 {
-	struct fb_info *info;
 	struct intel_framebuffer *ifb = &ifbdev->ifb;
 
 	if (ifbdev->helper.fbdev) {
-		info = ifbdev->helper.fbdev;
+		struct fb_info *info = ifbdev->helper.fbdev;
+
 		unregister_framebuffer(info);
 		iounmap(info->screen_base);
 		if (info->cmap.len)
