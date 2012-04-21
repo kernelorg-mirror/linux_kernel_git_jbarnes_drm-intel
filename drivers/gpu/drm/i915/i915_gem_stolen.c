@@ -202,3 +202,113 @@ int i915_gem_init_stolen(struct drm_device *dev)
 
 	return 0;
 }
+
+struct scatterlist *
+i915_sg_create_for_stolen(struct drm_device *dev, u32 offset, u32 size)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct scatterlist *sg;
+
+	/* We hide that we have no struct page backing our stolen object
+	 * by wrapping the contiguous physical allocation with a fake
+	 * dma mapping in a single scatterlist.
+	 */
+
+	sg = kmalloc(sizeof(*sg), GFP_KERNEL);
+	if (sg == NULL)
+		return NULL;
+
+	sg_init_table(sg, 1);
+
+	sg->offset = offset;
+	sg->length = size;
+
+	sg_dma_address(sg) = dev_priv->mm.stolen_base + offset;
+	sg_dma_len(sg) = size;
+
+	return sg;
+}
+
+struct drm_i915_gem_object *
+_i915_gem_object_create_stolen(struct drm_device *dev,
+			       struct drm_mm_node *stolen)
+{
+	struct drm_i915_gem_object *obj;
+	struct scatterlist *sg;
+
+	obj = kzalloc(sizeof(*obj), GFP_KERNEL);
+	if (obj == NULL)
+		return NULL;
+
+	if (drm_gem_private_object_init(dev, &obj->base, stolen->size))
+		goto cleanup;
+
+	sg = i915_sg_create_for_stolen(dev, stolen->start, stolen->size);
+	if (sg == NULL)
+		goto cleanup;
+
+	i915_gem_object_init(obj);
+
+	obj->stolen = stolen;
+
+	obj->base.write_domain = I915_GEM_DOMAIN_GTT;
+	obj->base.read_domains = I915_GEM_DOMAIN_GTT;
+	obj->cache_level = I915_CACHE_NONE;
+
+	obj->sg_list = sg;
+	obj->num_sg = 1;
+
+	return obj;
+
+cleanup:
+	kfree(obj);
+	return NULL;
+}
+
+struct drm_i915_gem_object *
+i915_gem_object_create_stolen(struct drm_device *dev, u32 size)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_gem_object *obj;
+	struct drm_mm_node *stolen;
+
+	if (dev_priv->mm.stolen_base == 0)
+		return 0;
+
+	DRM_DEBUG_KMS("creating stolen object: size=%x\n", size);
+	if (size == 0)
+		return NULL;
+
+	stolen = drm_mm_search_free(&dev_priv->mm.stolen, size, 4096, 0);
+	if (stolen)
+		stolen = drm_mm_get_block(stolen, size, 4096);
+	if (stolen == NULL)
+		return NULL;
+
+	obj = _i915_gem_object_create_stolen(dev, stolen);
+	if (obj)
+		return obj;
+
+	drm_mm_put_block(stolen);
+	return NULL;
+}
+
+void
+i915_gem_object_release_stolen(struct drm_i915_gem_object *obj)
+{
+	if (obj->stolen) {
+		drm_mm_put_block(obj->stolen);
+		obj->stolen = NULL;
+	}
+
+	if (obj->sg_list) {
+		struct sg_table st;
+
+		st.sgl = obj->sg_list;
+		st.orig_nents = st.nents = obj->num_sg;
+
+		sg_free_table(&st);
+
+		obj->sg_list = NULL;
+	}
+}

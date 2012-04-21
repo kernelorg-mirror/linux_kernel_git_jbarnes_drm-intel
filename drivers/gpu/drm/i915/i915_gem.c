@@ -3512,6 +3512,8 @@ void i915_gem_free_object(struct drm_gem_object *gem_obj)
 	i915_gem_object_put_pages_gtt(obj);
 	i915_gem_object_free_mmap_offset(obj);
 
+	i915_gem_object_release_stolen(obj);
+
 	drm_gem_object_release(&obj->base);
 	i915_gem_info_remove_obj(dev_priv, obj->base.size);
 
