@@ -194,13 +194,11 @@ static void i915_ppgtt_insert_sg_entries(struct i915_hw_ppgtt *ppgtt,
 			pt_vaddr[j] = pte | pte_flags;
 
 			/* grab the next page */
-			m++;
-			if (m == segment_len) {
-				sg = sg_next(sg);
-				i++;
-				if (i == sg_len)
+			if (++m == segment_len) {
+				if (++i == sg_len)
 					break;
 
+				sg = sg_next(sg);
 				segment_len = sg_dma_len(sg) >> PAGE_SHIFT;
 				m = 0;
 			}
