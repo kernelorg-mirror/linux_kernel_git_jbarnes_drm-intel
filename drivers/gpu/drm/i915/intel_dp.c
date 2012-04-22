@@ -2491,13 +2491,6 @@ intel_dp_init(struct drm_device *dev, int output_reg)
 		pp_off = I915_READ(PCH_PP_OFF_DELAYS);
 		pp_div = I915_READ(PCH_PP_DIVISOR);
 
-		if (!pp_on || !pp_off || !pp_div) {
-			DRM_INFO("bad panel power sequencing delays, disabling panel\n");
-			intel_dp_encoder_destroy(&intel_dp->base.base);
-			intel_dp_destroy(&intel_connector->base);
-			return;
-		}
-
 		/* Pull timing values out of registers */
 		cur.t1_t3 = (pp_on & PANEL_POWER_UP_DELAY_MASK) >>
 			PANEL_POWER_UP_DELAY_SHIFT;
@@ -2536,6 +2529,18 @@ intel_dp_init(struct drm_device *dev, int output_reg)
 
 		DRM_DEBUG_KMS("backlight on delay %d, off delay %d\n",
 			      intel_dp->backlight_on_delay, intel_dp->backlight_off_delay);
+
+		/* Sanity check that we have legal sequence timings */
+		if (intel_dp->panel_power_up_delay == 0 ||
+		    intel_dp->backlight_on_delay == 0 ||
+		    intel_dp->backlight_off_delay == 0 ||
+		    intel_dp->panel_power_down_delay == 0 ||
+		    intel_dp->panel_power_cycle_delay == 0) {
+			DRM_INFO("bad panel power sequencing delays, disabling panel\n");
+			intel_dp_encoder_destroy(&intel_dp->base.base);
+			intel_dp_destroy(&intel_connector->base);
+			return;
+		}
 
 		ironlake_edp_panel_vdd_on(intel_dp);
 		ret = intel_dp_get_dpcd(intel_dp);
