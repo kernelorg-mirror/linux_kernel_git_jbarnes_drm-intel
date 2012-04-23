@@ -769,7 +769,10 @@ i915_error_object_create(struct drm_i915_private *dev_priv,
 	int page, page_count;
 	u32 reloc_offset;
 
-	if (src == NULL || src->pages == NULL)
+	if (src == NULL)
+		return NULL;
+
+	if (src->pages == NULL && !src->stolen)
 		return NULL;
 
 	page_count = src->base.size / PAGE_SIZE;
@@ -801,6 +804,14 @@ i915_error_object_create(struct drm_i915_private *dev_priv,
 						     reloc_offset);
 			memcpy_fromio(d, s, PAGE_SIZE);
 			io_mapping_unmap_atomic(s);
+		} else if (src->stolen) {
+			unsigned long offset;
+
+			offset = dev_priv->mm.stolen_base;
+			offset += src->stolen->start;
+			offset += page << PAGE_SHIFT;
+
+			memcpy_fromio(d, (void *)offset, PAGE_SIZE);
 		} else {
 			void *s;
 
