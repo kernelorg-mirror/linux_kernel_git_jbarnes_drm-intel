@@ -336,7 +336,7 @@ shmem_pread_fast(struct page *page, int shmem_page_offset, int page_length,
 				      page_length);
 	kunmap_atomic(vaddr);
 
-	return ret;
+	return ret ? -EFAULT : 0;
 }
 
 static void
@@ -387,7 +387,7 @@ shmem_pread_slow(struct page *page, int shmem_page_offset, int page_length,
 				     page_length);
 	kunmap(page);
 
-	return ret;
+	return ret ? - EFAULT : 0;
 }
 
 static int
@@ -396,7 +396,6 @@ i915_gem_shmem_pread(struct drm_device *dev,
 		     struct drm_i915_gem_pread *args,
 		     struct drm_file *file)
 {
-	struct address_space *mapping = obj->base.filp->f_path.dentry->d_inode->i_mapping;
 	char __user *user_data;
 	ssize_t remain;
 	loff_t offset;
@@ -405,7 +404,6 @@ i915_gem_shmem_pread(struct drm_device *dev,
 	int hit_slowpath = 0;
 	int prefaulted = 0;
 	int needs_clflush = 0;
-	int release_page;
 
 	user_data = (char __user *) (uintptr_t) args->data_ptr;
 	remain = args->size;
@@ -426,6 +424,10 @@ i915_gem_shmem_pread(struct drm_device *dev,
 		}
 	}
 
+	ret = i915_gem_object_get_pages_gtt(obj);
+	if (ret)
+		return ret;
+
 	offset = args->offset;
 
 	while (remain > 0) {
@@ -441,17 +443,8 @@ i915_gem_shmem_pread(struct drm_device *dev,
 		if ((shmem_page_offset + page_length) > PAGE_SIZE)
 			page_length = PAGE_SIZE - shmem_page_offset;
 
-		if (obj->pages) {
-			page = obj->pages[offset >> PAGE_SHIFT];
-			release_page = 0;
-		} else {
-			page = shmem_read_mapping_page(mapping, offset >> PAGE_SHIFT);
-			if (IS_ERR(page)) {
-				ret = PTR_ERR(page);
-				goto out;
-			}
-			release_page = 1;
-		}
+		page = obj->pages[offset >> PAGE_SHIFT];
+		page_cache_get(page);
 
 		page_do_bit17_swizzling = obj_do_bit17_swizzling &&
 			(page_to_phys(page) & (1 << 17)) != 0;
@@ -462,8 +455,6 @@ i915_gem_shmem_pread(struct drm_device *dev,
 		if (ret == 0)
 			goto next_page;
 
-		hit_slowpath = 1;
-		page_cache_get(page);
 		mutex_unlock(&dev->struct_mutex);
 
 		if (!prefaulted) {
@@ -480,17 +471,18 @@ i915_gem_shmem_pread(struct drm_device *dev,
 				       user_data, page_do_bit17_swizzling,
 				       needs_clflush);
 
+		hit_slowpath = 1;
 		mutex_lock(&dev->struct_mutex);
-		page_cache_release(page);
+
+		if (ret == 0)
+			ret = i915_gem_object_get_pages_gtt(obj);
+
 next_page:
 		mark_page_accessed(page);
-		if (release_page)
-			page_cache_release(page);
+		page_cache_release(page);
 
-		if (ret) {
-			ret = -EFAULT;
+		if (ret)
 			goto out;
-		}
 
 		remain -= page_length;
 		user_data += page_length;
