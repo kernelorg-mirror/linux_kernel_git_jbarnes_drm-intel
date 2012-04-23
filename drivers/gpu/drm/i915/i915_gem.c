@@ -1507,7 +1507,7 @@ i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj)
 	struct page *page;
 	gfp_t gfp;
 
-	if (obj->pages)
+	if (obj->pages || obj->stolen)
 		return 0;
 
 	if (obj->madv != I915_MADV_WILLNEED)
