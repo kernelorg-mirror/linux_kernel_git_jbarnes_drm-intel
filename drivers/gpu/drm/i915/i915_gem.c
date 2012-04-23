@@ -643,19 +643,17 @@ out:
  * needs_clflush_before is set and flushes out any written cachelines after
  * writing if needs_clflush is set. */
 static int
-shmem_pwrite_fast(struct page *page, int shmem_page_offset, int page_length,
+shmem_pwrite_fast(char *vaddr, int shmem_page_offset, int page_length,
 		  char __user *user_data,
 		  bool page_do_bit17_swizzling,
 		  bool needs_clflush_before,
 		  bool needs_clflush_after)
 {
-	char *vaddr;
 	int ret;
 
 	if (unlikely(page_do_bit17_swizzling))
 		return -EINVAL;
 
-	vaddr = kmap_atomic(page);
 	if (needs_clflush_before)
 		drm_clflush_virt_range(vaddr + shmem_page_offset,
 				       page_length);
@@ -665,7 +663,6 @@ shmem_pwrite_fast(struct page *page, int shmem_page_offset, int page_length,
 	if (needs_clflush_after)
 		drm_clflush_virt_range(vaddr + shmem_page_offset,
 				       page_length);
-	kunmap_atomic(vaddr);
 
 	return ret ? -EFAULT : 0;
 }
@@ -673,16 +670,14 @@ shmem_pwrite_fast(struct page *page, int shmem_page_offset, int page_length,
 /* Only difference to the fast-path function is that this can handle bit17
  * and uses non-atomic copy and kmap functions. */
 static int
-shmem_pwrite_slow(struct page *page, int shmem_page_offset, int page_length,
+shmem_pwrite_slow(char *vaddr, int shmem_page_offset, int page_length,
 		  char __user *user_data,
 		  bool page_do_bit17_swizzling,
 		  bool needs_clflush_before,
 		  bool needs_clflush_after)
 {
-	char *vaddr;
 	int ret;
 
-	vaddr = kmap(page);
 	if (unlikely(needs_clflush_before || page_do_bit17_swizzling))
 		shmem_clflush_swizzled_range(vaddr + shmem_page_offset,
 					     page_length,
@@ -699,7 +694,6 @@ shmem_pwrite_slow(struct page *page, int shmem_page_offset, int page_length,
 		shmem_clflush_swizzled_range(vaddr + shmem_page_offset,
 					     page_length,
 					     page_do_bit17_swizzling);
-	kunmap(page);
 
 	return ret ? -EFAULT : 0;
 }
@@ -751,8 +745,10 @@ i915_gem_shmem_pwrite(struct drm_device *dev,
 	obj->dirty = 1;
 
 	while (remain > 0) {
+		char *uninitialized_var(vaddr);
 		struct page *page;
 		int partial_cacheline_write;
+		bool release_page = false;
 
 		/* Operation in this page
 		 *
@@ -772,24 +768,44 @@ i915_gem_shmem_pwrite(struct drm_device *dev,
 			((shmem_page_offset | page_length)
 				& (boot_cpu_data.x86_clflush_size - 1));
 
-		page = obj->pages[offset >> PAGE_SHIFT];
-		page_cache_get(page);
+		if (obj->stolen) {
+			page = NULL;
+			vaddr = (char *)(dev_priv->mm.stolen_base + obj->stolen->start + offset);
+		} else
+			page = obj->pages[offset >> PAGE_SHIFT];
 
 		page_do_bit17_swizzling = obj_do_bit17_swizzling &&
 			(page_to_phys(page) & (1 << 17)) != 0;
 
-		ret = shmem_pwrite_fast(page, shmem_page_offset, page_length,
+		if (page)
+			vaddr = kmap_atomic(page);
+
+		ret = shmem_pwrite_fast(vaddr, shmem_page_offset, page_length,
 					user_data, page_do_bit17_swizzling,
 					partial_cacheline_write,
 					needs_clflush_after);
+
+		if (page)
+			kunmap_atomic(vaddr);
+
 		if (ret == 0)
 			goto next_page;
 
 		mutex_unlock(&dev->struct_mutex);
-		ret = shmem_pwrite_slow(page, shmem_page_offset, page_length,
+
+		if (page) {
+			page_cache_get(page);
+			release_page = true;
+			vaddr = kmap(page);
+		}
+
+		ret = shmem_pwrite_slow(vaddr, shmem_page_offset, page_length,
 					user_data, page_do_bit17_swizzling,
 					partial_cacheline_write,
 					needs_clflush_after);
+
+		if (page)
+			kunmap(page);
 
 		mutex_lock(&dev->struct_mutex);
 		hit_slowpath = 1;
@@ -798,9 +814,8 @@ i915_gem_shmem_pwrite(struct drm_device *dev,
 			ret = i915_gem_object_get_pages_gtt(obj);
 
 next_page:
-		set_page_dirty(page);
-		mark_page_accessed(page);
-		page_cache_release(page);
+		if (release_page)
+			page_cache_release(page);
 
 		if (ret)
 			goto out;
