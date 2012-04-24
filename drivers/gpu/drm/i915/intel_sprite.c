@@ -664,31 +664,31 @@ static uint32_t snb_plane_formats[] = {
 	DRM_FORMAT_VYUY,
 };
 
-int
+struct intel_plane *
 intel_plane_init(struct drm_device *dev, enum pipe pipe)
 {
-	struct intel_plane *intel_plane;
+	struct intel_plane *plane;
 	unsigned long possible_crtcs;
 	const uint32_t *plane_formats;
 	int num_plane_formats;
 	int ret;
 
 	if (INTEL_INFO(dev)->gen < 5)
-		return -ENODEV;
+		return ERR_PTR(-ENODEV);
 
-	intel_plane = kzalloc(sizeof(struct intel_plane), GFP_KERNEL);
-	if (!intel_plane)
-		return -ENOMEM;
+	plane = kzalloc(sizeof(struct intel_plane), GFP_KERNEL);
+	if (!plane)
+		return ERR_PTR(-ENOMEM);
 
 	switch (INTEL_INFO(dev)->gen) {
 	case 5:
 	case 6:
-		intel_plane->max_downscale = 16;
-		intel_plane->update_plane = ilk_update_plane;
-		intel_plane->disable_plane = ilk_disable_plane;
-		intel_plane->update_colorkey = ilk_update_colorkey;
-		intel_plane->get_colorkey = ilk_get_colorkey;
-		intel_plane->current_surface = ilk_current_surface;
+		plane->max_downscale = 16;
+		plane->update_plane = ilk_update_plane;
+		plane->disable_plane = ilk_disable_plane;
+		plane->update_colorkey = ilk_update_colorkey;
+		plane->get_colorkey = ilk_get_colorkey;
+		plane->current_surface = ilk_current_surface;
 
 		if (IS_GEN6(dev)) {
 			plane_formats = snb_plane_formats;
@@ -700,30 +700,40 @@ intel_plane_init(struct drm_device *dev, enum pipe pipe)
 		break;
 
 	case 7:
-		intel_plane->max_downscale = 2;
-		intel_plane->update_plane = ivb_update_plane;
-		intel_plane->disable_plane = ivb_disable_plane;
-		intel_plane->update_colorkey = ivb_update_colorkey;
-		intel_plane->get_colorkey = ivb_get_colorkey;
-		intel_plane->current_surface = ivb_current_surface;
+		plane->max_downscale = 2;
+		plane->update_plane = ivb_update_plane;
+		plane->disable_plane = ivb_disable_plane;
+		plane->update_colorkey = ivb_update_colorkey;
+		plane->get_colorkey = ivb_get_colorkey;
+		plane->current_surface = ivb_current_surface;
 
 		plane_formats = snb_plane_formats;
 		num_plane_formats = ARRAY_SIZE(snb_plane_formats);
 		break;
 
 	default:
-		return -ENODEV;
+		return ERR_PTR(-ENODEV);
 	}
 
-	intel_plane->pipe = pipe;
+	plane->pipe = pipe;
 	possible_crtcs = (1 << pipe);
-	ret = drm_plane_init(dev, &intel_plane->base, possible_crtcs,
+	ret = drm_plane_init(dev, &plane->base, possible_crtcs,
 			     &intel_plane_funcs,
 			     plane_formats, num_plane_formats,
 			     false);
-	if (ret)
-		kfree(intel_plane);
+	if (ret) {
+		kfree(plane);
+		plane = ERR_PTR(ret);
+	}
 
-	return ret;
+	return plane;
 }
 
+void
+intel_plane_cleanup(struct intel_plane *plane)
+{
+	if (IS_ERR(plane))
+		return;
+
+	kfree(plane);
+}

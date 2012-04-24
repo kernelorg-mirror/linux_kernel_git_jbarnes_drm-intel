@@ -6424,6 +6424,8 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	}
 
 	drm_crtc_helper_add(&intel_crtc->base, &intel_helper_funcs);
+
+	intel_crtc->sprite = intel_plane_init(dev, pipe);
 }
 
 int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
@@ -6938,7 +6940,7 @@ void intel_modeset_init_hw(struct drm_device *dev)
 void intel_modeset_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int i, ret;
+	int i;
 
 	drm_mode_config_init(dev);
 
@@ -6973,12 +6975,8 @@ void intel_modeset_init(struct drm_device *dev)
 	DRM_DEBUG_KMS("%d display pipe%s available.\n",
 		      dev_priv->num_pipe, dev_priv->num_pipe > 1 ? "s" : "");
 
-	for (i = 0; i < dev_priv->num_pipe; i++) {
+	for (i = 0; i < dev_priv->num_pipe; i++)
 		intel_crtc_init(dev, i);
-		ret = intel_plane_init(dev, i);
-		if (ret)
-			DRM_DEBUG_KMS("plane %d init failed: %d\n", i, ret);
-	}
 
 	intel_pch_pll_init(dev);
 
@@ -7019,6 +7017,7 @@ void intel_modeset_cleanup(struct drm_device *dev)
 			continue;
 
 		intel_crtc_restore_pllclock(crtc);
+		intel_plane_cleanup(to_intel_crtc(crtc)->sprite);
 	}
 
 	intel_disable_fbc(dev);
