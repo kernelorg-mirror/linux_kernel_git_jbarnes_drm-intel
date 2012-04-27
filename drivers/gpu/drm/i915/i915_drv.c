@@ -858,6 +858,8 @@ int i915_reset(struct drm_device *dev)
 	if (!i915_try_reset)
 		return 0;
 
+	intel_modeset_quiesce(dev); /* finish off any pending tasks first */
+
 	if (!mutex_trylock(&dev->struct_mutex))
 		return -EBUSY;
 
