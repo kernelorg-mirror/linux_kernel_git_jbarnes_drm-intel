@@ -2048,18 +2048,11 @@ i915_gem_check_olr(struct intel_ring_buffer *ring, u32 seqno)
 	return ret;
 }
 
-static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
-			bool interruptible, long *usecs)
+static int __wait_seqno(struct intel_ring_buffer *ring,
+			u32 seqno, bool interruptible)
 {
 	drm_i915_private_t *dev_priv = ring->dev->dev_private;
-	bool wait_forever = false;
-	long timeout, end;
-
-	if (usecs == NULL || ((*usecs) < 0)) {
-		wait_forever = true;
-		timeout = msecs_to_jiffies(100);
-	} else
-		timeout = usecs_to_jiffies(*usecs);
+	int ret;
 
 	if (i915_seqno_passed(ring->get_seqno(ring), seqno))
 		return 0;
@@ -2071,38 +2064,60 @@ static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
 	(i915_seqno_passed(ring->get_seqno(ring), seqno) || \
 	atomic_read(&dev_priv->mm.wedged))
 
+	ret = 0;
 	trace_i915_gem_request_wait_begin(ring, seqno);
-again:
 	if (interruptible)
-		end = wait_event_interruptible_timeout(ring->irq_queue,
-						       EXIT_COND,
-						       timeout);
+		ret = wait_event_interruptible(ring->irq_queue, EXIT_COND);
 	else
-		end = wait_event_timeout(ring->irq_queue, EXIT_COND, timeout);
-#undef EXIT_COND
+		wait_event(ring->irq_queue, EXIT_COND);
+	trace_i915_gem_request_wait_end(ring, seqno);
+	ring->irq_put(ring);
 
 	if (atomic_read(&dev_priv->mm.wedged))
-		end = -EAGAIN;
+		ret = -EAGAIN;
 
-	if (end == 0 && wait_forever)
-		goto again;
+	return ret;
+}
+
+static int __wait_seqno_timeout(struct intel_ring_buffer *ring,
+				u32 seqno, long *usecs)
+{
+	drm_i915_private_t *dev_priv = ring->dev->dev_private;
+	long timeout, end;
+
+	if (*usecs < 0)
+		return __wait_seqno(ring, seqno, true);
+
+	if (i915_seqno_passed(ring->get_seqno(ring), seqno))
+		return 0;
+
+	if (WARN_ON(!ring->irq_get(ring)))
+		return -ENODEV;
+
+	trace_i915_gem_request_wait_begin(ring, seqno);
+	timeout = usecs_to_jiffies(*usecs);
+
+	end = wait_event_interruptible_timeout(ring->irq_queue,
+					       i915_seqno_passed(ring->get_seqno(ring), seqno) ||
+					       atomic_read(&dev_priv->mm.wedged),
+					       timeout);
 
 	trace_i915_gem_request_wait_end(ring, seqno);
 	ring->irq_put(ring);
 
-	if (!wait_forever) {
-		BUG_ON(end == 0);
-		*usecs = jiffies_to_usecs(timeout - end);
-	}
+	if (atomic_read(&dev_priv->mm.wedged))
+		end = -EAGAIN;
 
 	switch (end) {
 	case -EAGAIN: /* Wedged */
 	case -ERESTARTSYS: /* Signal */
 		return (int)end;
-	case 0: /* Tiemout */
+	case 0: /* Timeout */
+		*usecs = 0;
 		return -ETIME;
 	default: /* Completed */
 		WARN_ON(end < 0); /* We're not aware of other errors */
+		*usecs = jiffies_to_usecs(timeout - end);
 		return 0;
 	}
 }
@@ -2127,9 +2142,7 @@ i915_wait_seqno(struct intel_ring_buffer *ring, uint32_t seqno)
 	if (ret)
 		return ret;
 
-	ret = __wait_seqno(ring, seqno, dev_priv->mm.interruptible, NULL);
-
-	return ret;
+	return __wait_seqno(ring, seqno, dev_priv->mm.interruptible);
 }
 
 /**
@@ -2205,7 +2218,7 @@ i915_gem_wait_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 	drm_gem_object_unreference(&obj->base);
 	mutex_unlock(&dev->struct_mutex);
 
-	ret = __wait_seqno(ring, seqno, true, &timeout);
+	ret = __wait_seqno_timeout(ring, seqno, &timeout);
 	args->timeout_ns = timeout * NSEC_PER_USEC;
 	return ret;
 
@@ -3110,7 +3123,7 @@ i915_gem_object_flush_gpu(struct drm_i915_gem_object *obj,
 
 		/* First try waiting without the locks */
 		mutex_unlock(&obj->base.dev->struct_mutex);
-		ret = __wait_seqno(ring, seqno, true, NULL);
+		ret = __wait_seqno(ring, seqno, true);
 		mutex_lock(&obj->base.dev->struct_mutex);
 		if (ret)
 			return ret;
@@ -3419,7 +3432,7 @@ i915_gem_ring_throttle(struct drm_device *dev, struct drm_file *file)
 	if (seqno == 0)
 		return 0;
 
-	ret = __wait_seqno(ring, seqno, true, NULL);
+	ret = __wait_seqno(ring, seqno, true);
 	if (ret == 0)
 		queue_delayed_work(dev_priv->wq, &dev_priv->mm.retire_work, 0);
 
