@@ -370,7 +370,8 @@ extern bool intel_dpd_is_edp(struct drm_device *dev);
 extern void intel_edp_link_config(struct intel_encoder *, int *, int *);
 extern bool intel_encoder_is_pch_edp(struct drm_encoder *encoder);
 extern struct intel_plane *intel_plane_init(struct drm_device *dev, enum pipe pipe);
-void intel_plane_cleanup(struct intel_plane *plane);
+extern void intel_modeset_quiesce(struct drm_device *dev);
+extern void intel_plane_cleanup(struct intel_plane *plane);
 extern void intel_flush_display_plane(struct drm_i915_private *dev_priv,
 				      enum plane plane);
 

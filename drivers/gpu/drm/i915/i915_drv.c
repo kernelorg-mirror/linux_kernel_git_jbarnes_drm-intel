@@ -569,6 +569,7 @@ static int i915_drm_freeze(struct drm_device *dev)
 			return error;
 		}
 		drm_irq_uninstall(dev);
+		intel_modeset_quiesce(dev);
 	}
 
 	i915_save_state(dev);

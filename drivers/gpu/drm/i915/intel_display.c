@@ -6995,9 +6995,19 @@ void intel_modeset_gem_init(struct drm_device *dev)
 	intel_setup_overlay(dev);
 }
 
-void intel_modeset_cleanup(struct drm_device *dev)
+void intel_modeset_quiesce(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	cancel_work_sync(&dev_priv->hotplug_work);
+	cancel_work_sync(&dev_priv->rps_work);
+
+	/* flush any delayed tasks or pending work */
+	flush_scheduled_work();
+}
+
+void intel_modeset_cleanup(struct drm_device *dev)
+{
 	struct drm_crtc *crtc;
 
 	/* Clear the vblank worker prior to taking any locks */
@@ -7038,11 +7048,7 @@ void intel_modeset_cleanup(struct drm_device *dev)
 	/* Disable the irq before mode object teardown, for the irq might
 	 * enqueue unpin/hotplug work. */
 	drm_irq_uninstall(dev);
-	cancel_work_sync(&dev_priv->hotplug_work);
-	cancel_work_sync(&dev_priv->rps_work);
-
-	/* flush any delayed tasks or pending work */
-	flush_scheduled_work();
+	intel_modeset_quiesce(dev);
 
 	drm_mode_config_cleanup(dev);
 }
