@@ -3984,14 +3984,6 @@ i915_gem_lastclose(struct drm_device *dev)
 		DRM_ERROR("failed to idle hardware: %d\n", ret);
 }
 
-static void
-init_ring_lists(struct intel_ring_buffer *ring)
-{
-	INIT_LIST_HEAD(&ring->active_list);
-	INIT_LIST_HEAD(&ring->request_list);
-	INIT_LIST_HEAD(&ring->gpu_write_list);
-}
-
 void
 i915_gem_load(struct drm_device *dev)
 {
@@ -4010,8 +4002,6 @@ i915_gem_load(struct drm_device *dev)
 	INIT_LIST_HEAD(&dev_priv->mm.unbound_list);
 	INIT_LIST_HEAD(&dev_priv->mm.fence_list);
 	INIT_LIST_HEAD(&dev_priv->mm.gtt_list);
-	for (i = 0; i < I915_NUM_RINGS; i++)
-		init_ring_lists(&dev_priv->ring[i]);
 	for (i = 0; i < I915_MAX_NUM_FENCES; i++)
 		INIT_LIST_HEAD(&dev_priv->fence_regs[i].lru_list);
 	INIT_DELAYED_WORK(&dev_priv->mm.retire_work,
