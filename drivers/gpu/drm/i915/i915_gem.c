@@ -3077,19 +3077,54 @@ i915_gem_object_flush_cpu_write_domain(struct drm_i915_gem_object *obj,
 }
 
 static int
+i915_gem_object_flush_gpu__blocking(struct drm_i915_gem_object *obj,
+				    bool for_cpu_write)
+{
+	int ret;
+
+	ret = i915_gem_object_flush_gpu_write_domain(obj);
+	if (ret)
+		return ret;
+
+	if (for_cpu_write || obj->pending_gpu_write)
+		return i915_gem_object_wait_rendering(obj);
+
+	return 0;
+}
+
+static int
 i915_gem_object_flush_gpu(struct drm_i915_gem_object *obj,
 			  bool for_cpu_write)
 {
 	int ret;
 
 	ret = i915_gem_object_flush_gpu_write_domain(obj);
-	if (ret && ret != -EIO)
+	if (ret)
 		return ret;
 
-	if (for_cpu_write || obj->pending_gpu_write) {
-		ret = i915_gem_object_wait_rendering(obj);
-		if (ret && ret != -EIO)
+	if (obj->active && (for_cpu_write || obj->pending_gpu_write)) {
+		struct intel_ring_buffer *ring = obj->ring;
+		u32 seqno = obj->last_rendering_seqno;
+
+		ret = i915_gem_check_wedge(obj->base.dev->dev_private);
+		if (ret)
 			return ret;
+
+		ret = i915_gem_check_olr(obj->ring,
+					 obj->last_rendering_seqno);
+		if (ret)
+			return ret;
+
+		/* First try waiting without the locks */
+		mutex_unlock(&obj->base.dev->struct_mutex);
+		ret = __wait_seqno(ring, seqno, true, NULL);
+		mutex_lock(&obj->base.dev->struct_mutex);
+		if (ret)
+			return ret;
+
+		/* Were we re-queued? Block until it is our turn. */
+		i915_gem_retire_requests_ring(ring);
+		return i915_gem_object_flush_gpu__blocking(obj, for_cpu_write);
 	}
 
 	return 0;
@@ -3116,7 +3151,7 @@ i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj, bool write)
 		return 0;
 
 	ret = i915_gem_object_flush_gpu(obj, write);
-	if (ret)
+	if (ret && ret != -EIO)
 		return ret;
 
 	i915_gem_object_flush_cpu_write_domain(obj, obj->pin_count);
@@ -3319,7 +3354,7 @@ i915_gem_object_set_to_cpu_domain(struct drm_i915_gem_object *obj, bool write)
 		return 0;
 
 	ret = i915_gem_object_flush_gpu(obj, write);
-	if (ret)
+	if (ret && ret != -EIO)
 		return ret;
 
 	i915_gem_object_flush_gtt_write_domain(obj);
