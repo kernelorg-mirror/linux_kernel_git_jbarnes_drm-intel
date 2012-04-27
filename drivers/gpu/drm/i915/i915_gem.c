@@ -2067,13 +2067,6 @@ static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
 	if (WARN_ON(!ring->irq_get(ring)))
 		return -ENODEV;
 
-	if (i915_seqno_passed(ring->get_seqno(ring), seqno))
-		return 0;
-
-	trace_i915_gem_request_wait_begin(ring, seqno);
-	if (WARN_ON(!ring->irq_get(ring)))
-		return -ENODEV;
-
 #define EXIT_COND \
 	(i915_seqno_passed(ring->get_seqno(ring), seqno) || \
 	atomic_read(&dev_priv->mm.wedged))
