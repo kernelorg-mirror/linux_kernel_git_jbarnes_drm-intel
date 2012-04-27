@@ -858,10 +858,13 @@ int i915_reset(struct drm_device *dev)
 	if (!i915_try_reset)
 		return 0;
 
+	drm_irq_uninstall(dev);
 	intel_modeset_quiesce(dev); /* finish off any pending tasks first */
 
-	if (!mutex_trylock(&dev->struct_mutex))
-		return -EBUSY;
+	if (!mutex_trylock(&dev->struct_mutex)) {
+		ret = -EBUSY;
+		goto out;
+	}
 
 	dev_priv->stop_rings = 0;
 
@@ -877,7 +880,7 @@ int i915_reset(struct drm_device *dev)
 	if (ret) {
 		DRM_ERROR("Failed to reset chip.\n");
 		mutex_unlock(&dev->struct_mutex);
-		return ret;
+		goto out;
 	}
 
 	/* Ok, now get things going again... */
@@ -912,14 +915,11 @@ int i915_reset(struct drm_device *dev)
 
 		if (drm_core_check_feature(dev, DRIVER_MODESET))
 			intel_modeset_init_hw(dev);
-
-		drm_irq_uninstall(dev);
-		drm_irq_install(dev);
-	} else {
-		mutex_unlock(&dev->struct_mutex);
 	}
 
-	return 0;
+out:
+	drm_irq_install(dev);
+	return ret;
 }
 
 
