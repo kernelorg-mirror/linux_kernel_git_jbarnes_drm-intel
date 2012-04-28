@@ -55,6 +55,7 @@ struct  intel_ring_buffer {
 	 * we can detect new retirements.
 	 */
 	u32		last_retired_head;
+	u32		last_seqno;
 
 	u32		irq_refcount;		/* protected by dev_priv->irq_lock */
 	u32		irq_enable_mask;	/* bitmask to enable ring interrupt */

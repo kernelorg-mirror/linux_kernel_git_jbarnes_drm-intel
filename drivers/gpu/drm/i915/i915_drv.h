@@ -1341,8 +1341,7 @@ i915_gem_object_unpin_fence(struct drm_i915_gem_object *obj)
 	}
 }
 
-void i915_gem_retire_requests(struct drm_device *dev);
-void i915_gem_retire_requests_ring(struct intel_ring_buffer *ring);
+void i915_gem_retire_requests_ring(struct intel_ring_buffer *ring, u32 seqno);
 
 void i915_gem_reset(struct drm_device *dev);
 bool i915_gem_clflush_object(struct drm_i915_gem_object *obj);

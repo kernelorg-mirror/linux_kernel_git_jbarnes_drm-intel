@@ -599,20 +599,20 @@ gen6_ring_get_seqno(struct intel_ring_buffer *ring)
 	 * ACTHD) before reading the status page. */
 	if (IS_GEN6(dev) || IS_GEN7(dev))
 		intel_ring_get_active_head(ring);
-	return intel_read_status_page(ring, I915_GEM_HWS_INDEX);
+	return ring->last_seqno = intel_read_status_page(ring, I915_GEM_HWS_INDEX);
 }
 
 static u32
 ring_get_seqno(struct intel_ring_buffer *ring)
 {
-	return intel_read_status_page(ring, I915_GEM_HWS_INDEX);
+	return ring->last_seqno = intel_read_status_page(ring, I915_GEM_HWS_INDEX);
 }
 
 static u32
 pc_render_get_seqno(struct intel_ring_buffer *ring)
 {
 	struct pipe_control *pc = ring->private;
-	return pc->cpu_page[0];
+	return ring->last_seqno = pc->cpu_page[0];
 }
 
 static bool
@@ -1097,7 +1097,7 @@ static int intel_ring_wait_seqno(struct intel_ring_buffer *ring, u32 seqno)
 
 	dev_priv->mm.interruptible = was_interruptible;
 	if (!ret)
-		i915_gem_retire_requests_ring(ring);
+		i915_gem_retire_requests_ring(ring, seqno);
 
 	return ret;
 }
@@ -1107,8 +1107,6 @@ static int intel_ring_wait_request(struct intel_ring_buffer *ring, int n)
 	struct drm_i915_gem_request *request;
 	u32 seqno = 0;
 	int ret;
-
-	i915_gem_retire_requests_ring(ring);
 
 	if (ring->last_retired_head != -1) {
 		ring->head = ring->last_retired_head;

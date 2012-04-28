@@ -192,8 +192,6 @@ i915_gem_evict_everything(struct drm_device *dev)
 	if (ret)
 		return ret;
 
-	i915_gem_retire_requests(dev);
-
 	BUG_ON(!list_empty(&dev_priv->mm.flushing_list));
 
 	/* Having flushed everything, unbind() should never raise an error */

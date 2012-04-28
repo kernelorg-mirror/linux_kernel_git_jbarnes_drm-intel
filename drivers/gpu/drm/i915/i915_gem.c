@@ -1870,9 +1870,8 @@ void i915_gem_reset(struct drm_device *dev)
  * This function clears the request list as sequence numbers are passed.
  */
 void
-i915_gem_retire_requests_ring(struct intel_ring_buffer *ring)
+i915_gem_retire_requests_ring(struct intel_ring_buffer *ring, u32 seqno)
 {
-	uint32_t seqno;
 	int i;
 
 	if (list_empty(&ring->request_list))
@@ -1880,7 +1879,10 @@ i915_gem_retire_requests_ring(struct intel_ring_buffer *ring)
 
 	WARN_ON(i915_verify_lists(ring->dev));
 
-	seqno = ring->get_seqno(ring);
+	if (seqno == 0)
+		seqno = ring->get_seqno(ring);
+	if (!i915_seqno_passed(seqno, ring->last_seqno))
+		seqno = ring->last_seqno;
 
 	for (i = 0; i < ARRAY_SIZE(ring->sync_seqno); i++)
 		if (seqno >= ring->sync_seqno[i])
@@ -1937,17 +1939,6 @@ i915_gem_retire_requests_ring(struct intel_ring_buffer *ring)
 	WARN_ON(i915_verify_lists(ring->dev));
 }
 
-void
-i915_gem_retire_requests(struct drm_device *dev)
-{
-	drm_i915_private_t *dev_priv = dev->dev_private;
-	struct intel_ring_buffer *ring;
-	int i;
-
-	for_each_ring(ring, dev_priv, i)
-		i915_gem_retire_requests_ring(ring);
-}
-
 static void
 i915_gem_retire_work_handler(struct work_struct *work)
 {
@@ -1967,13 +1958,13 @@ i915_gem_retire_work_handler(struct work_struct *work)
 		return;
 	}
 
-	i915_gem_retire_requests(dev);
-
 	/* Send a periodic flush down the ring so we don't hold onto GEM
 	 * objects indefinitely.
 	 */
 	idle = true;
 	for_each_ring(ring, dev_priv, i) {
+		i915_gem_retire_requests_ring(ring, ring->last_seqno);
+
 		if (!list_empty(&ring->gpu_write_list)) {
 			struct drm_i915_gem_request *request;
 			int ret;
@@ -2054,7 +2045,7 @@ static int __wait_seqno(struct intel_ring_buffer *ring,
 	drm_i915_private_t *dev_priv = ring->dev->dev_private;
 	int ret;
 
-	if (i915_seqno_passed(ring->get_seqno(ring), seqno))
+	if (i915_seqno_passed(ring->last_seqno, seqno))
 		return 0;
 
 	if (WARN_ON(!ring->irq_get(ring)))
@@ -2071,6 +2062,7 @@ static int __wait_seqno(struct intel_ring_buffer *ring,
 	else
 		wait_event(ring->irq_queue, EXIT_COND);
 	trace_i915_gem_request_wait_end(ring, seqno);
+
 	ring->irq_put(ring);
 
 	if (atomic_read(&dev_priv->mm.wedged))
@@ -2166,7 +2158,9 @@ i915_gem_object_wait_rendering(struct drm_i915_gem_object *obj)
 		ret = i915_wait_seqno(obj->ring, obj->last_rendering_seqno);
 		if (ret)
 			return ret;
-		i915_gem_retire_requests_ring(obj->ring);
+
+		i915_gem_retire_requests_ring(obj->ring,
+					      obj->last_rendering_seqno);
 	}
 
 	return 0;
@@ -2375,6 +2369,7 @@ i915_gem_flush_ring(struct intel_ring_buffer *ring,
 
 static int i915_ring_idle(struct intel_ring_buffer *ring)
 {
+	u32 seqno;
 	int ret;
 
 	if (list_empty(&ring->gpu_write_list) && list_empty(&ring->active_list))
@@ -2387,7 +2382,14 @@ static int i915_ring_idle(struct intel_ring_buffer *ring)
 			return ret;
 	}
 
-	return i915_wait_seqno(ring, i915_gem_next_request_seqno(ring));
+	seqno = i915_gem_next_request_seqno(ring);
+
+	ret = i915_wait_seqno(ring, seqno);
+	if (ret)
+		return ret;
+
+	i915_gem_retire_requests_ring(ring, seqno);
+	return 0;
 }
 
 int i915_gpu_idle(struct drm_device *dev)
@@ -3129,7 +3131,7 @@ i915_gem_object_flush_gpu(struct drm_i915_gem_object *obj,
 			return ret;
 
 		/* Were we re-queued? Block until it is our turn. */
-		i915_gem_retire_requests_ring(ring);
+		i915_gem_retire_requests_ring(ring, seqno);
 		return i915_gem_object_flush_gpu__blocking(obj, for_cpu_write);
 	}
 
@@ -3605,6 +3607,8 @@ i915_gem_busy_ioctl(struct drm_device *dev, void *data,
 	 */
 	args->busy = obj->active;
 	if (args->busy) {
+		u32 seqno;
+
 		/* Unconditionally flush objects, even when the gpu still uses this
 		 * object. Userspace calling this function indicates that it wants to
 		 * use this buffer rather sooner than later, so issuing the required
@@ -3618,13 +3622,15 @@ i915_gem_busy_ioctl(struct drm_device *dev, void *data,
 						 obj->last_rendering_seqno);
 		}
 
-		/* Update the active list for the hardware's current position.
-		 * Otherwise this only updates on a delayed timer or when irqs
-		 * are actually unmasked, and our working set ends up being
-		 * larger than required.
+		/* Update the active list for the hardware's current
+		 * position.  Otherwise this only updates on a delayed
+		 * timer or when irqs are actually unmasked, and our
+		 * working set ends up being larger than required.
 		 */
-		i915_gem_retire_requests_ring(obj->ring);
-
+		seqno = obj->last_rendering_seqno;
+		if (!i915_seqno_passed(obj->ring->last_seqno, seqno))
+			seqno = 0;
+		i915_gem_retire_requests_ring(obj->ring, seqno);
 		args->busy = obj->active;
 	}
 
