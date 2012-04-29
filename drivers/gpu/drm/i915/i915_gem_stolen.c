@@ -63,7 +63,11 @@ static unsigned long i915_stolen_to_physical(struct drm_device *dev)
 	 * its value of TOLUD.
 	 */
 	base = 0;
-	if (INTEL_INFO(dev)->gen > 3 || IS_G33(dev)) {
+	if (INTEL_INFO(dev)->gen >= 6) {
+		/* Read Base Data of Stolen Memory Register (BDSM) directly */
+		pci_read_config_dword(pdev, 0xB0, &base);
+		base &= ~4095; /* lower bits used for locking register */
+	} else if (INTEL_INFO(dev)->gen > 3 || IS_G33(dev)) {
 		/* Read Graphics Base of Stolen Memory directly */
 		pci_read_config_dword(pdev, 0xA4, &base);
 #if 0
@@ -171,6 +175,9 @@ int i915_gem_init_stolen(struct drm_device *dev)
 	dev_priv->mm.stolen_base = i915_stolen_to_physical(dev);
 	if (dev_priv->mm.stolen_base == 0)
 		return 0;
+
+	DRM_DEBUG_KMS("found %d bytes of stolen memory at %08lx\n",
+		      dev_priv->mm.gtt->stolen_size, dev_priv->mm.stolen_base);
 
 	/* Basic memrange allocator for stolen space */
 	drm_mm_init(&dev_priv->mm.stolen, 0, prealloc_size);
