@@ -56,7 +56,7 @@ struct drm_fb_helper_funcs {
 
 	int (*fb_probe)(struct drm_fb_helper *helper,
 			struct drm_fb_helper_surface_size *sizes);
-	void (*initial_config)(struct drm_fb_helper *fb_helper,
+	bool (*initial_config)(struct drm_fb_helper *fb_helper,
 			       struct drm_fb_helper_crtc **crtcs,
 			       struct drm_display_mode **modes,
 			       bool *enabled, int width, int height);

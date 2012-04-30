@@ -6375,6 +6375,99 @@ static void intel_pch_pll_init(struct drm_device *dev)
 	}
 }
 
+static int intel_crtc_get_bpp(struct drm_crtc *crtc)
+{
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	int pipeconf;
+	int ret;
+
+	pipeconf = PIPECONF(intel_crtc->pipe);
+
+	switch (pipeconf & PIPE_BPC_MASK) {
+	case PIPE_6BPC:
+		ret = 18;
+		break;
+	case PIPE_8BPC:
+		ret = 24;
+		break;
+	case PIPE_10BPC:
+		ret = 30;
+		break;
+	case PIPE_12BPC:
+		ret = 36;
+		break;
+	default:
+		ret = 24;
+		break;
+	}
+
+	return ret;
+}
+
+static bool intel_crtc_get_status(struct drm_crtc *crtc)
+{
+	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	int dspcntr, pipeconf;
+
+	dspcntr = DSPCNTR(intel_crtc->plane);
+	pipeconf = PIPECONF(intel_crtc->pipe);
+
+	if ((I915_READ(dspcntr) & DISPLAY_PLANE_ENABLE) &&
+	    (I915_READ(pipeconf) & PIPECONF_ENABLE))
+		return true;
+
+	return false;
+}
+
+/*
+ * Get current mode, encoder, and connector info for this CRTC
+ */
+static void intel_crtc_get_config(struct drm_crtc *crtc)
+{
+	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_display_mode *mode;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	int bpp, w, h, size;
+	u32 val, pixformat;
+	u32 base;
+	bool tiled;
+
+	mode = intel_crtc_mode_get(dev, crtc);
+	crtc->mode = *mode;
+	kfree(mode);
+	crtc->enabled = drm_helper_crtc_in_use(crtc);
+
+	val = I915_READ(DSPCNTR(intel_crtc->plane));
+	pixformat = val & DISPPLANE_PIXFORMAT_MASK;
+	tiled = val & DISPPLANE_TILED;
+
+	switch (pixformat) {
+	case DISPPLANE_8BPP:
+		bpp = 1;
+		break;
+	case DISPPLANE_15_16BPP:
+	case DISPPLANE_16BPP:
+		bpp = 2;
+		break;
+	case DISPPLANE_32BPP_NO_ALPHA:
+	case DISPPLANE_32BPP:
+	case DISPPLANE_32BPP_30BIT_NO_ALPHA:
+		bpp = 4;
+		break;
+	default:
+		bpp = 4; /* assume worst case */
+	}
+
+	val = I915_READ(PIPESRC(intel_crtc->pipe));
+	w = val >> 16;
+	h = val & 0xffff;
+
+	size = w * h * bpp;
+}
+
 static void intel_crtc_init(struct drm_device *dev, int pipe)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
@@ -6411,9 +6504,8 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	dev_priv->plane_to_crtc_mapping[intel_crtc->plane] = &intel_crtc->base;
 	dev_priv->pipe_to_crtc_mapping[intel_crtc->pipe] = &intel_crtc->base;
 
-	intel_crtc_reset(&intel_crtc->base);
-	intel_crtc->active = true; /* force the pipe off on setup_init_config */
-	intel_crtc->bpp = 24; /* default for pre-Ironlake */
+	intel_crtc->active = intel_crtc_get_status(&intel_crtc->base);
+	intel_crtc->bpp = intel_crtc_get_bpp(&intel_crtc->base);
 
 	if (HAS_PCH_SPLIT(dev)) {
 		intel_helper_funcs.prepare = ironlake_crtc_prepare;
@@ -6937,7 +7029,10 @@ void intel_modeset_init_hw(struct drm_device *dev)
 void intel_modeset_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int i;
+	struct drm_crtc *crtc;
+	struct drm_encoder *encoder;
+	struct drm_connector *connector;
+	int i, ret;
 
 	drm_mode_config_init(dev);
 
@@ -6980,6 +7075,9 @@ void intel_modeset_init(struct drm_device *dev)
 	/* Just disable it once at startup */
 	i915_disable_vga(dev);
 	intel_setup_outputs(dev);
+
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head)
+		intel_crtc_get_config(crtc);
 
 	/* Just in case the BIOS is doing something questionable. */
 	intel_disable_fbc(dev);

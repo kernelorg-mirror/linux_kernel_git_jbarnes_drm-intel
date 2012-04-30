@@ -214,14 +214,18 @@ static struct drm_fb_helper_crtc *intel_fb_helper_crtc(struct drm_fb_helper *fb_
 	return NULL;
 }
 
-static void intel_fb_initial_config(struct drm_fb_helper *fb_helper,
+static bool intel_fb_initial_config(struct drm_fb_helper *fb_helper,
 				    struct drm_fb_helper_crtc **crtcs,
 				    struct drm_display_mode **modes,
 				    bool *enabled, int width, int height)
 {
+	struct intel_fbdev *ifbdev = (struct intel_fbdev *)fb_helper;
 	struct drm_connector *connector;
 	struct drm_encoder *encoder;
 	int i;
+
+	if (!ifbdev->bios_fb)
+		return false;
 
 	for (i = 0; i < fb_helper->connector_count; i++) {
 		connector = fb_helper->connector_info[i]->connector;
@@ -247,6 +251,8 @@ static void intel_fb_initial_config(struct drm_fb_helper *fb_helper,
 			      encoder->crtc->base.id,
 			      modes[i] ? modes[i]->name : "off");
 	}
+
+	return true;
 }
 
 static struct drm_fb_helper_funcs intel_fb_helper_funcs = {

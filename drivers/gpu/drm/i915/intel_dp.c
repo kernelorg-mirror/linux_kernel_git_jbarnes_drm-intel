@@ -2388,6 +2388,17 @@ intel_dp_add_properties(struct intel_dp *intel_dp, struct drm_connector *connect
 	intel_attach_broadcast_rgb_property(connector);
 }
 
+static int intel_dp_get_pipe(struct intel_dp *intel_dp)
+{
+	struct drm_device *dev = intel_dp->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	int pipe;
+
+	pipe = (I915_READ(intel_dp->output_reg) & DP_PIPE_MASK) >> 30;
+
+	return pipe;
+}
+
 void
 intel_dp_init(struct drm_device *dev, int output_reg)
 {
@@ -2448,6 +2459,7 @@ intel_dp_init(struct drm_device *dev, int output_reg)
 
 	connector->interlace_allowed = true;
 	connector->doublescan_allowed = 0;
+	connector->encoder = &intel_encoder->base;
 
 	drm_encoder_init(dev, &intel_encoder->base, &intel_dp_enc_funcs,
 			 DRM_MODE_ENCODER_TMDS);
@@ -2455,6 +2467,12 @@ intel_dp_init(struct drm_device *dev, int output_reg)
 
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
 	drm_sysfs_connector_add(connector);
+
+	intel_encoder->base.crtc = dev_priv->pipe_to_crtc_mapping[intel_dp_get_pipe(intel_dp)];
+
+	DRM_DEBUG_KMS("setting dp encoder %p crtc to %p (%d)\n",
+		      &intel_encoder->base, intel_encoder->base.crtc,
+		      intel_encoder->base.crtc->base.id);
 
 	/* Set up the DDC bus. */
 	switch (output_reg) {
@@ -2579,4 +2597,6 @@ intel_dp_init(struct drm_device *dev, int output_reg)
 		u32 temp = I915_READ(PEG_BAND_GAP_DATA);
 		I915_WRITE(PEG_BAND_GAP_DATA, (temp & ~0xf) | 0xd);
 	}
+
+	connector->status = intel_dp_detect(connector, 0);
 }

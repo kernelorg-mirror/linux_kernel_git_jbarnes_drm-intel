@@ -1232,6 +1232,7 @@ static void drm_setup_crtcs(struct drm_fb_helper *fb_helper)
 	struct drm_display_mode **modes;
 	struct drm_encoder *encoder;
 	struct drm_mode_set *modeset;
+	bool success;
 	bool *enabled;
 	int width, height;
 	int i, ret;
@@ -1255,10 +1256,12 @@ static void drm_setup_crtcs(struct drm_fb_helper *fb_helper)
 
 	drm_enable_connectors(fb_helper, enabled);
 
-	if (fb_helper->funcs->initial_config) {
-		fb_helper->funcs->initial_config(fb_helper, crtcs, modes,
-						 enabled, width, height);
-	} else {
+	success = false;
+	if (fb_helper->funcs->initial_config &&
+	    fb_helper->funcs->initial_config(fb_helper, crtcs, modes,
+					     enabled, width, height))
+		success = true;
+	if (!success) {
 		/* clean out all the encoder/crtc combos */
 		list_for_each_entry(encoder, &dev->mode_config.encoder_list,
 				    head)
