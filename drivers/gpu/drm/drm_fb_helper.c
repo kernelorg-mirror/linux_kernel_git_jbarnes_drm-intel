@@ -1255,16 +1255,29 @@ static void drm_setup_crtcs(struct drm_fb_helper *fb_helper)
 
 	drm_enable_connectors(fb_helper, enabled);
 
-	ret = drm_target_cloned(fb_helper, modes, enabled, width, height);
-	if (!ret) {
-		ret = drm_target_preferred(fb_helper, modes, enabled, width, height);
-		if (!ret)
-			DRM_ERROR("Unable to find initial modes\n");
+	if (fb_helper->funcs->initial_config) {
+		fb_helper->funcs->initial_config(fb_helper, crtcs, modes,
+						 enabled, width, height);
+	} else {
+		/* clean out all the encoder/crtc combos */
+		list_for_each_entry(encoder, &dev->mode_config.encoder_list,
+				    head)
+			encoder->crtc = NULL;
+
+		ret = drm_target_cloned(fb_helper, modes, enabled, width,
+					height);
+		if (!ret) {
+			ret = drm_target_preferred(fb_helper, modes, enabled,
+						   width, height);
+			if (!ret)
+				DRM_ERROR("Unable to find initial modes\n");
+		}
+
+		DRM_DEBUG_KMS("picking CRTCs for %dx%d config\n",
+			      width, height);
+
+		drm_pick_crtcs(fb_helper, crtcs, modes, 0, width, height);
 	}
-
-	DRM_DEBUG_KMS("picking CRTCs for %dx%d config\n", width, height);
-
-	drm_pick_crtcs(fb_helper, crtcs, modes, 0, width, height);
 
 	/* need to set the modesets up here for use later */
 	/* fill out the connector<->crtc mappings into the modesets */

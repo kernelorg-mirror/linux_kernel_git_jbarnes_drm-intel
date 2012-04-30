@@ -203,10 +203,57 @@ static int intel_fb_find_or_create_single(struct drm_fb_helper *helper,
 	return new_fb;
 }
 
+static struct drm_fb_helper_crtc *intel_fb_helper_crtc(struct drm_fb_helper *fb_helper, struct drm_crtc *crtc)
+{
+	int i;
+
+	for (i = 0; i < fb_helper->crtc_count; i++)
+		if (fb_helper->crtc_info[i].mode_set.crtc == crtc)
+			return &fb_helper->crtc_info[i];
+
+	return NULL;
+}
+
+static void intel_fb_initial_config(struct drm_fb_helper *fb_helper,
+				    struct drm_fb_helper_crtc **crtcs,
+				    struct drm_display_mode **modes,
+				    bool *enabled, int width, int height)
+{
+	struct drm_connector *connector;
+	struct drm_encoder *encoder;
+	int i;
+
+	for (i = 0; i < fb_helper->connector_count; i++) {
+		connector = fb_helper->connector_info[i]->connector;
+
+		if (!enabled[i]) {
+			DRM_DEBUG_KMS("connector %d not enabled, skipping\n",
+				      connector->base.id);
+			continue;
+		}
+
+		encoder = connector->encoder;
+		if (!encoder || !encoder->crtc) {
+			DRM_DEBUG_KMS("connector %d has no encoder or crtc, skipping\n",
+				      connector->base.id);
+			continue;
+		}
+
+		modes[i] = &encoder->crtc->mode;
+		crtcs[i] = intel_fb_helper_crtc(fb_helper, encoder->crtc);
+		DRM_DEBUG_KMS("fb crtc info: %p\n", crtcs[i]);
+		DRM_DEBUG_KMS("connector %s on crtc %d: %s\n",
+			      drm_get_connector_name(connector),
+			      encoder->crtc->base.id,
+			      modes[i] ? modes[i]->name : "off");
+	}
+}
+
 static struct drm_fb_helper_funcs intel_fb_helper_funcs = {
 	.gamma_set = intel_crtc_fb_gamma_set,
 	.gamma_get = intel_crtc_fb_gamma_get,
 	.fb_probe = intel_fb_find_or_create_single,
+	.initial_config = intel_fb_initial_config,
 };
 
 static void intel_fbdev_destroy(struct drm_device *dev,
