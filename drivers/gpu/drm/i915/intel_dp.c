@@ -390,7 +390,7 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 
 	/* Try to wait for any previous AUX channel activity */
 	for (try = 0; try < 3; try++) {
-		status = I915_READ(ch_ctl);
+		status = I915_READ_NOTRACE(ch_ctl);
 		if ((status & DP_AUX_CH_CTL_SEND_BUSY) == 0)
 			break;
 		msleep(1);
@@ -398,7 +398,7 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 
 	if (try == 3) {
 		WARN(1, "dp_aux_ch not started status 0x%08x\n",
-		     I915_READ(ch_ctl));
+		     I915_READ_NOTRACE(ch_ctl));
 		return -EBUSY;
 	}
 
@@ -406,32 +406,32 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 	for (try = 0; try < 5; try++) {
 		/* Load the send data into the aux channel data registers */
 		for (i = 0; i < send_bytes; i += 4)
-			I915_WRITE(ch_data + i,
-				   pack_aux(send + i, send_bytes - i));
+			I915_WRITE_NOTRACE(ch_data + i,
+					   pack_aux(send + i, send_bytes - i));
 
 		/* Send the command and wait for it to complete */
-		I915_WRITE(ch_ctl,
-			   DP_AUX_CH_CTL_SEND_BUSY |
-			   DP_AUX_CH_CTL_TIME_OUT_400us |
-			   (send_bytes << DP_AUX_CH_CTL_MESSAGE_SIZE_SHIFT) |
-			   (precharge << DP_AUX_CH_CTL_PRECHARGE_2US_SHIFT) |
-			   (aux_clock_divider << DP_AUX_CH_CTL_BIT_CLOCK_2X_SHIFT) |
-			   DP_AUX_CH_CTL_DONE |
-			   DP_AUX_CH_CTL_TIME_OUT_ERROR |
-			   DP_AUX_CH_CTL_RECEIVE_ERROR);
+		I915_WRITE_NOTRACE(ch_ctl,
+				   DP_AUX_CH_CTL_SEND_BUSY |
+				   DP_AUX_CH_CTL_TIME_OUT_400us |
+				   (send_bytes << DP_AUX_CH_CTL_MESSAGE_SIZE_SHIFT) |
+				   (precharge << DP_AUX_CH_CTL_PRECHARGE_2US_SHIFT) |
+				   (aux_clock_divider << DP_AUX_CH_CTL_BIT_CLOCK_2X_SHIFT) |
+				   DP_AUX_CH_CTL_DONE |
+				   DP_AUX_CH_CTL_TIME_OUT_ERROR |
+				   DP_AUX_CH_CTL_RECEIVE_ERROR);
 		for (;;) {
-			status = I915_READ(ch_ctl);
+			status = I915_READ_NOTRACE(ch_ctl);
 			if ((status & DP_AUX_CH_CTL_SEND_BUSY) == 0)
 				break;
 			udelay(100);
 		}
 
 		/* Clear done status and any errors */
-		I915_WRITE(ch_ctl,
-			   status |
-			   DP_AUX_CH_CTL_DONE |
-			   DP_AUX_CH_CTL_TIME_OUT_ERROR |
-			   DP_AUX_CH_CTL_RECEIVE_ERROR);
+		I915_WRITE_NOTRACE(ch_ctl,
+				   status |
+				   DP_AUX_CH_CTL_DONE |
+				   DP_AUX_CH_CTL_TIME_OUT_ERROR |
+				   DP_AUX_CH_CTL_RECEIVE_ERROR);
 
 		if (status & (DP_AUX_CH_CTL_TIME_OUT_ERROR |
 			      DP_AUX_CH_CTL_RECEIVE_ERROR))
@@ -467,7 +467,7 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 		recv_bytes = recv_size;
 
 	for (i = 0; i < recv_bytes; i += 4)
-		unpack_aux(I915_READ(ch_data + i),
+		unpack_aux(I915_READ_NOTRACE(ch_data + i),
 			   recv + i, recv_bytes - i);
 
 	return recv_bytes;
