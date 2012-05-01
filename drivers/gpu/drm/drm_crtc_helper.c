@@ -663,9 +663,7 @@ int drm_crtc_helper_set_config(struct drm_mode_set *set)
 		if (!connector->encoder)
 			continue;
 
-		if (connector->encoder->crtc == set->crtc)
-			new_crtc = NULL;
-		else
+		if (new_crtc && connector->encoder->crtc != set->crtc)
 			new_crtc = connector->encoder->crtc;
 
 		for (ro = 0; ro < set->num_connectors; ro++) {
