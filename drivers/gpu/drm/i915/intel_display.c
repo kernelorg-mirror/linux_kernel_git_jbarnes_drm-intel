@@ -6433,7 +6433,6 @@ static void intel_crtc_get_config(struct drm_crtc *crtc)
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int bpp, w, h, size;
 	u32 val, pixformat;
-	u32 base;
 	bool tiled;
 
 	mode = intel_crtc_mode_get(dev, crtc);
@@ -6697,9 +6696,6 @@ static void intel_setup_outputs(struct drm_device *dev)
 		encoder->base.possible_clones =
 			intel_encoder_clones(dev, encoder->clone_mask);
 	}
-
-	if (HAS_PCH_SPLIT(dev))
-		ironlake_init_pch_refclk(dev);
 }
 
 static void intel_user_framebuffer_destroy(struct drm_framebuffer *fb)
@@ -7031,9 +7027,7 @@ void intel_modeset_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_crtc *crtc;
-	struct drm_encoder *encoder;
-	struct drm_connector *connector;
-	int i, ret;
+	int i;
 
 	drm_mode_config_init(dev);
 
