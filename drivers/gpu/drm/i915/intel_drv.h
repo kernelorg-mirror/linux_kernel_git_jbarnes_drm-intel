@@ -146,6 +146,8 @@ struct intel_fbdev {
 	struct intel_framebuffer ifb;
 	struct list_head fbdev_list;
 	struct drm_display_mode *our_mode;
+	bool bios_fb;
+	bool bios_fb_registered;
 };
 
 struct intel_encoder {

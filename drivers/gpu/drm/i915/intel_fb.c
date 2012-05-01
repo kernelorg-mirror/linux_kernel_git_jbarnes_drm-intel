@@ -194,6 +194,12 @@ static int intel_fb_find_or_create_single(struct drm_fb_helper *helper,
 	int new_fb = 0;
 	int ret;
 
+	/* A stolen BIOS fb may be new to the core */
+	if (ifbdev->bios_fb && !ifbdev->bios_fb_registered) {
+		ifbdev->bios_fb_registered = true;
+		return 1;
+	}
+
 	if (!helper->fb) {
 		ret = intelfb_create(ifbdev, sizes);
 		if (ret)
@@ -379,12 +385,16 @@ void intel_fbdev_init_bios(struct drm_device *dev)
 
 		crtc->base.fb = &ifbdev->ifb.base;
 		obj->pin_count++;
+		ifbdev->bios_fb = true;
 
 		drm_fb_helper_single_add_all_connectors(&ifbdev->helper);
-		drm_fb_helper_hotplug_event(&ifbdev->helper);
+		drm_fb_helper_initial_config(&ifbdev->helper, bpp);
 
 		vga_switcheroo_client_fb_set(dev->pdev, info);
 		dev_priv->fbdev = ifbdev;
+
+		DRM_DEBUG_KMS("using BIOS config for initial console\n");
+
 		return;
 	}
 
