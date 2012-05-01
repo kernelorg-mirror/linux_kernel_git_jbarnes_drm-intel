@@ -5698,6 +5698,7 @@ struct drm_display_mode *intel_crtc_mode_get(struct drm_device *dev,
 	mode->vtotal = ((vtot & 0xffff0000) >> 16) + 1;
 	mode->vsync_start = (vsync & 0xffff) + 1;
 	mode->vsync_end = ((vsync & 0xffff0000) >> 16) + 1;
+	mode->clock = 137500;
 
 	drm_mode_set_name(mode);
 
