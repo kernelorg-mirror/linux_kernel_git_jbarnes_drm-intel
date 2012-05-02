@@ -311,8 +311,10 @@ void intel_fbdev_init_bios(struct drm_device *dev)
 			continue;
 
 		if (INTEL_INFO(dev)->gen >= 4) {
-			if (val & DISPPLANE_TILED)
+			if (val & DISPPLANE_TILED) {
+				DRM_DEBUG_KMS("tiled BIOS fb?\n");
 				continue; /* unexpected! */
+			}
 		}
 
 		switch (val & DISPPLANE_PIXFORMAT_MASK) {
@@ -365,6 +367,7 @@ void intel_fbdev_init_bios(struct drm_device *dev)
 		obj = i915_gem_object_create_stolen_for_preallocated
 			(dev, offset, offset, size);
 		if (obj == NULL) {
+			DRM_DEBUG_KMS("failed to create stolen fb\n");
 			kfree(ifbdev);
 			continue;
 		}
