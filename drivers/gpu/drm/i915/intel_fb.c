@@ -320,7 +320,8 @@ void intel_fbdev_init_bios(struct drm_device *dev)
 		switch (val & DISPPLANE_PIXFORMAT_MASK) {
 		default:
 		case DISPPLANE_8BPP:
-			continue; /* ignore palettes */
+			depth = bpp = 8;
+			break;
 		case DISPPLANE_15_16BPP:
 			depth = 15; bpp = 16;
 			break;
