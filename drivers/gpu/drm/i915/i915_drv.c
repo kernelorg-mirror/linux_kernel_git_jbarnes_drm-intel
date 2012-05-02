@@ -32,6 +32,7 @@
 #include "drm.h"
 #include "i915_drm.h"
 #include "i915_drv.h"
+#include "i915_trace.h"
 #include "intel_drv.h"
 
 #include <linux/console.h>
@@ -425,34 +426,36 @@ bool i915_semaphore_is_enabled(struct drm_device *dev)
 
 void __gen6_gt_force_wake_get(struct drm_i915_private *dev_priv)
 {
-	int count;
+	unsigned long timeout;
 
-	count = 0;
-	while (count++ < 50 && (I915_READ_NOTRACE(FORCEWAKE_ACK) & 1))
-		udelay(10);
+	timeout = jiffies + msecs_to_jiffies(1);
+	while (I915_READ_NOTRACE(FORCEWAKE_ACK) & 1 &&
+	       time_before(jiffies, timeout))
+		;
 
 	I915_WRITE_NOTRACE(FORCEWAKE, 1);
-	POSTING_READ(FORCEWAKE);
 
-	count = 0;
-	while (count++ < 50 && (I915_READ_NOTRACE(FORCEWAKE_ACK) & 1) == 0)
-		udelay(10);
+	timeout = jiffies + msecs_to_jiffies(1);
+	while ((I915_READ_NOTRACE(FORCEWAKE_ACK) & 1) == 0 &&
+	       time_before(jiffies, timeout))
+		;
 }
 
 void __gen6_gt_force_wake_mt_get(struct drm_i915_private *dev_priv)
 {
-	int count;
+	unsigned long timeout;
 
-	count = 0;
-	while (count++ < 50 && (I915_READ_NOTRACE(FORCEWAKE_MT_ACK) & 1))
-		udelay(10);
+	timeout = jiffies + msecs_to_jiffies(1);
+	while (I915_READ_NOTRACE(FORCEWAKE_MT_ACK) & 1 &&
+	       time_before(jiffies, timeout))
+		;
 
 	I915_WRITE_NOTRACE(FORCEWAKE_MT, _MASKED_BIT_ENABLE(1));
-	POSTING_READ(FORCEWAKE_MT);
 
-	count = 0;
-	while (count++ < 50 && (I915_READ_NOTRACE(FORCEWAKE_MT_ACK) & 1) == 0)
-		udelay(10);
+	timeout = jiffies + msecs_to_jiffies(1);
+	while ((I915_READ_NOTRACE(FORCEWAKE_MT_ACK) & 1) == 0 &&
+	       time_before(jiffies, timeout))
+		;
 }
 
 /*
@@ -467,7 +470,7 @@ void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv)
 
 	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 	if (dev_priv->forcewake_count++ == 0)
-		dev_priv->display.force_wake_get(dev_priv);
+		dev_priv->gt.force_wake_get(dev_priv);
 	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 }
 
@@ -480,14 +483,14 @@ static void gen6_gt_check_fifodbg(struct drm_i915_private *dev_priv)
 		I915_WRITE_NOTRACE(GTFIFODBG, GT_FIFO_CPU_ERROR_MASK);
 }
 
-void __gen6_gt_force_wake_put(struct drm_i915_private *dev_priv)
+static void __gen6_gt_force_wake_put(struct drm_i915_private *dev_priv)
 {
 	I915_WRITE_NOTRACE(FORCEWAKE, 0);
 	/* The below doubles as a POSTING_READ */
 	gen6_gt_check_fifodbg(dev_priv);
 }
 
-void __gen6_gt_force_wake_mt_put(struct drm_i915_private *dev_priv)
+static void __gen6_gt_force_wake_mt_put(struct drm_i915_private *dev_priv)
 {
 	I915_WRITE_NOTRACE(FORCEWAKE_MT, _MASKED_BIT_DISABLE(1));
 	/* The below doubles as a POSTING_READ */
@@ -503,7 +506,7 @@ void gen6_gt_force_wake_put(struct drm_i915_private *dev_priv)
 
 	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 	if (--dev_priv->forcewake_count == 0)
-		dev_priv->display.force_wake_put(dev_priv);
+		dev_priv->gt.force_wake_put(dev_priv);
 	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 }
 
@@ -527,7 +530,7 @@ int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv)
 	return ret;
 }
 
-void vlv_force_wake_get(struct drm_i915_private *dev_priv)
+static void vlv_force_wake_get(struct drm_i915_private *dev_priv)
 {
 	int count;
 
@@ -545,11 +548,52 @@ void vlv_force_wake_get(struct drm_i915_private *dev_priv)
 		udelay(10);
 }
 
-void vlv_force_wake_put(struct drm_i915_private *dev_priv)
+static void vlv_force_wake_put(struct drm_i915_private *dev_priv)
 {
 	I915_WRITE_NOTRACE(FORCEWAKE_VLV, 0xffff0000);
 	/* FIXME: confirm VLV behavior with Punit folks */
 	POSTING_READ(FORCEWAKE_VLV);
+}
+
+void intel_gt_init(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	spin_lock_init(&dev_priv->gt_lock);
+
+	if (IS_VALLEYVIEW(dev)) {
+		dev_priv->gt.force_wake_get = vlv_force_wake_get;
+		dev_priv->gt.force_wake_put = vlv_force_wake_put;
+	} else if (INTEL_INFO(dev)->gen >= 6) {
+		dev_priv->gt.force_wake_get = __gen6_gt_force_wake_get;
+		dev_priv->gt.force_wake_put = __gen6_gt_force_wake_put;
+
+		/* IVB configs may use multi-threaded forcewake */
+		if (IS_IVYBRIDGE(dev) || IS_HASWELL(dev)) {
+			u32 ecobus;
+
+			/* A small trick here - if the bios hasn't configured
+			 * MT forcewake, and if the device is in RC6, then
+			 * force_wake_mt_get will not wake the device and the
+			 * ECOBUS read will return zero. Which will be
+			 * (correctly) interpreted by the test below as MT
+			 * forcewake being disabled.
+			 */
+			mutex_lock(&dev->struct_mutex);
+			__gen6_gt_force_wake_mt_get(dev_priv);
+			ecobus = I915_READ_NOTRACE(ECOBUS);
+			__gen6_gt_force_wake_mt_put(dev_priv);
+			mutex_unlock(&dev->struct_mutex);
+
+			if (ecobus & FORCEWAKE_MT_ENABLE) {
+				DRM_DEBUG_KMS("Using MT version of forcewake\n");
+				dev_priv->gt.force_wake_get =
+					__gen6_gt_force_wake_mt_get;
+				dev_priv->gt.force_wake_put =
+					__gen6_gt_force_wake_mt_put;
+			}
+		}
+	}
 }
 
 static int i915_drm_freeze(struct drm_device *dev)
@@ -789,9 +833,9 @@ static int gen6_do_reset(struct drm_device *dev)
 
 	/* If reset with a user forcewake, try to restore, otherwise turn it off */
 	if (dev_priv->forcewake_count)
-		dev_priv->display.force_wake_get(dev_priv);
+		dev_priv->gt.force_wake_get(dev_priv);
 	else
-		dev_priv->display.force_wake_put(dev_priv);
+		dev_priv->gt.force_wake_put(dev_priv);
 
 	/* Restore fifo count */
 	dev_priv->gt_fifo_count = I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
@@ -1148,10 +1192,10 @@ u##x i915_read##x(struct drm_i915_private *dev_priv, u32 reg) { \
 		unsigned long irqflags; \
 		spin_lock_irqsave(&dev_priv->gt_lock, irqflags); \
 		if (dev_priv->forcewake_count == 0) \
-			dev_priv->display.force_wake_get(dev_priv); \
+			dev_priv->gt.force_wake_get(dev_priv); \
 		val = read##y(dev_priv->regs + reg); \
 		if (dev_priv->forcewake_count == 0) \
-			dev_priv->display.force_wake_put(dev_priv); \
+			dev_priv->gt.force_wake_put(dev_priv); \
 		spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags); \
 	} else { \
 		val = read##y(dev_priv->regs + reg); \
