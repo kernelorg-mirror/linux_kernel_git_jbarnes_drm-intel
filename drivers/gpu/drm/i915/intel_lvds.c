@@ -886,6 +886,21 @@ static bool intel_lvds_supported(struct drm_device *dev)
 	return IS_MOBILE(dev) && !IS_I830(dev);
 }
 
+static int intel_lvds_get_pipe(struct intel_lvds *intel_lvds)
+{
+	struct intel_encoder *intel_encoder = &intel_lvds->base;
+	struct drm_device *dev = intel_encoder->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	int reg;
+
+	if (HAS_PCH_SPLIT(dev))
+		reg = PCH_LVDS;
+	else
+		reg = LVDS;
+
+	return (I915_READ(reg) & LVDS_PIPEB_SELECT) >> 30;
+}
+
 /**
  * intel_lvds_init - setup LVDS connectors on this device
  * @dev: drm device
@@ -967,6 +982,8 @@ bool intel_lvds_init(struct drm_device *dev)
 	connector->display_info.subpixel_order = SubPixelHorizontalRGB;
 	connector->interlace_allowed = false;
 	connector->doublescan_allowed = false;
+	connector->encoder = &intel_encoder->base;
+	intel_encoder->base.crtc = dev_priv->pipe_to_crtc_mapping[intel_lvds_get_pipe(intel_lvds)];
 
 	/* create the scaling mode property */
 	drm_mode_create_scaling_mode_property(dev);
@@ -1108,6 +1125,8 @@ out:
 	drm_sysfs_connector_add(connector);
 
 	intel_panel_setup_backlight(dev);
+
+	connector->status = intel_lvds_detect(connector, 0);
 
 	return true;
 
