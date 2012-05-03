@@ -1904,6 +1904,7 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 
 	reg = DSPCNTR(plane);
 	dspcntr = I915_READ(reg);
+	dspcntr |= DISPLAY_PLANE_ENABLE;
 	/* Mask out pixel format bits in case we change it */
 	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
 	switch (fb->bits_per_pixel) {
