@@ -169,8 +169,6 @@ struct intel_crtc {
 	u8 lut_r[256], lut_g[256], lut_b[256];
 	int dpms_mode;
 	bool active; /* is the crtc on? independent of the dpms mode */
-	bool busy; /* is scanout buffer being updated frequently? */
-	struct timer_list idle_timer;
 	bool lowfreq_avail;
 	struct intel_overlay *overlay;
 	struct intel_unpin_work *unpin_work;
@@ -351,8 +349,10 @@ extern bool intel_sdvo_init(struct drm_device *dev, uint32_t sdvo_reg,
 			    bool is_sdvob);
 extern void intel_dvo_init(struct drm_device *dev);
 extern void intel_tv_init(struct drm_device *dev);
-extern void intel_mark_busy(struct drm_device *dev,
-			    struct drm_i915_gem_object *obj);
+extern void intel_mark_busy(struct drm_device *dev);
+extern void intel_mark_idle(struct drm_device *dev);
+extern void intel_mark_fb_busy(struct drm_i915_gem_object *obj);
+extern void intel_mark_fb_idle(struct drm_i915_gem_object *obj);
 extern bool intel_lvds_init(struct drm_device *dev);
 extern void intel_dp_init(struct drm_device *dev, int dp_reg);
 void

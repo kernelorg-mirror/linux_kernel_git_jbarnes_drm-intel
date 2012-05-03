@@ -1419,6 +1419,9 @@ i915_gem_object_move_off_active(struct drm_i915_gem_object *obj)
 	list_del_init(&obj->ring_list);
 	obj->last_rendering_seqno = 0;
 	obj->last_fenced_seqno = 0;
+
+	if (obj->pin_count) /* are we a framebuffer? */
+		intel_mark_fb_idle(obj);
 }
 
 static void
@@ -1579,9 +1582,11 @@ i915_add_request(struct intel_ring_buffer *ring,
 				  jiffies +
 				  msecs_to_jiffies(DRM_I915_HANGCHECK_PERIOD));
 		}
-		if (was_empty)
+		if (was_empty) {
 			queue_delayed_work(dev_priv->wq,
 					   &dev_priv->mm.retire_work, HZ);
+			intel_mark_busy(dev_priv->dev);
+		}
 	}
 	return 0;
 }
@@ -1814,6 +1819,8 @@ i915_gem_retire_work_handler(struct work_struct *work)
 
 	if (!dev_priv->mm.suspended && !idle)
 		queue_delayed_work(dev_priv->wq, &dev_priv->mm.retire_work, HZ);
+	if (idle)
+		intel_mark_idle(dev);
 
 	mutex_unlock(&dev->struct_mutex);
 }
