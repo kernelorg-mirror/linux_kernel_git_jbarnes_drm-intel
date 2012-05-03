@@ -126,6 +126,8 @@ static void intel_lvds_disable(struct intel_lvds *intel_lvds)
 		stat_reg = PP_STATUS;
 	}
 
+	DRM_DEBUG_KMS("shutting off LVDS panel\n");
+
 	intel_panel_disable_backlight(dev);
 
 	I915_WRITE(ctl_reg, I915_READ(ctl_reg) & ~POWER_TARGET_ON);
