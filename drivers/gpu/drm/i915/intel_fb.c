@@ -292,23 +292,49 @@ static void intel_fbdev_destroy(struct drm_device *dev,
 	}
 }
 
+/*
+ * Try to read the BIOS display configuration and use it for the initial
+ * fb configuration.
+ *
+ * The BIOS or boot loader will generally create an initial display
+ * configuration for us that includes some set of active pipes and displays.
+ * This routine tries to figure out which pipes are active, what resolutions
+ * are being displayed, and then allocates a framebuffer and initial fb
+ * config based on that data.
+ *
+ * If the BIOS or boot loader leaves the display in VGA mode, there's not
+ * much we can do; switching out of that mode involves allocating a new,
+ * high res buffer, and also recalculating bandwidth requirements for the
+ * new bpp configuration.
+ *
+ * However, if we're loaded into an existing, high res mode, we should
+ * be able to allocate a buffer big enough to handle the largest active
+ * mode, create a mode_set for it, and pass it to the fb helper to create
+ * the configuration.
+ */
 void intel_fbdev_init_bios(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_fbdev *ifbdev;
-	int pipe, ret;
+	struct drm_crtc *crtc;
+	struct drm_mode_fb_cmd2 mode_cmd;
+	struct drm_i915_gem_object *obj;
+	struct fb_info *info;
+	u32 obj_size = 0, obj_offset = 0, last_bpp = 0, last_depth = 0;
+	int ret;
 
-	for_each_pipe(pipe) {
-		struct intel_crtc *crtc = to_intel_crtc(dev_priv->pipe_to_crtc_mapping[pipe]);
-		struct drm_mode_fb_cmd2 mode_cmd;
-		struct drm_i915_gem_object *obj;
-		struct fb_info *info;
-		u32 val, bpp, depth;
-		u32 size, offset;
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+		int pipe = intel_crtc->pipe, plane = intel_crtc->plane;
+		u32 val, bpp, depth, offset;
+		int pitch, width, height, size;
 
-		val = I915_READ(DSPCNTR(crtc->plane));
-		if ((val & DISPLAY_PLANE_ENABLE) == 0)
+		if (!intel_crtc->active) {
+			DRM_DEBUG_KMS("pipe %d not active, skipping\n", pipe);
 			continue;
+		}
+
+		val = I915_READ(DSPCNTR(plane));
 
 		if (INTEL_INFO(dev)->gen >= 4) {
 			if (val & DISPPLANE_TILED) {
@@ -333,77 +359,119 @@ void intel_fbdev_init_bios(struct drm_device *dev)
 			break;
 		}
 
-		if (INTEL_INFO(dev)->gen >= 4)
-			offset = I915_READ(DSPSURF(crtc->plane));
-		else
-			offset = I915_READ(DSPADDR(crtc->plane));
-		mode_cmd.pitches[0] = I915_READ(DSPSTRIDE(crtc->plane));
+		if (!last_bpp)
+			last_bpp = bpp;
+		if (!last_depth)
+			last_depth = depth;
 
-		val = I915_READ(PIPESRC(crtc->pipe));
-		mode_cmd.width = ((val >> 16) & 0xfff) + 1;
-		mode_cmd.height = ((val >> 0) & 0xfff) + 1;
-		mode_cmd.pixel_format = drm_mode_legacy_fb_format(bpp, depth);
+		if (bpp != last_bpp || depth != last_depth) {
+			DRM_DEBUG_KMS("pipe %d has depth/bpp mismatch: "
+				      "(%d/%d vs %d/%d), skipping\n",
+				      pipe, bpp, depth, last_bpp, last_depth);
+			continue;
+		}
+
+		last_bpp = bpp;
+		last_depth = depth;
+
+		if (INTEL_INFO(dev)->gen >= 4)
+			offset = I915_READ(DSPSURF(plane));
+		else
+			offset = I915_READ(DSPADDR(plane));
+
+		pitch = I915_READ(DSPSTRIDE(plane));
+
+		val = I915_READ(PIPESRC(pipe));
+		width = ((val >> 16) & 0xfff) + 1;
+		height = ((val >> 0) & 0xfff) + 1;
 
 		DRM_DEBUG_KMS("Found active pipe [%d/%d]: size=%dx%d@%d, offset=%x\n",
-			      crtc->pipe, crtc->plane,
-			      mode_cmd.width, mode_cmd.height, depth, offset);
+			      pipe, plane, width, height, depth, offset);
 
-		size = mode_cmd.pitches[0] * mode_cmd.height;
+		size = pitch * height;
 		size = ALIGN(size, PAGE_SIZE);
 
-		ifbdev = kzalloc(sizeof(struct intel_fbdev), GFP_KERNEL);
-		if (!ifbdev)
-			continue;
+		/* In case we're handed multiple fbs, inherit the largest one */
+		if (!obj_size || size > obj_size) {
+			obj_size = size;
+			obj_offset = offset;
 
-		ifbdev->helper.funcs = &intel_fb_helper_funcs;
-		ret = drm_fb_helper_init(dev, &ifbdev->helper,
-					 dev_priv->num_pipe,
-					 INTELFB_CONN_LIMIT);
-		if (ret) {
-			kfree(ifbdev);
-			continue;
+			mode_cmd.pitches[0] = pitch;
+			mode_cmd.width = width;
+			mode_cmd.height = height;
+			mode_cmd.pixel_format =
+				drm_mode_legacy_fb_format(bpp, depth);
 		}
-
-		/* assume a 1:1 linear mapping between stolen and GTT */
-		obj = i915_gem_object_create_stolen_for_preallocated
-			(dev, offset, offset, size);
-		if (obj == NULL) {
-			DRM_DEBUG_KMS("failed to create stolen fb\n");
-			kfree(ifbdev);
-			continue;
-		}
-
-		ret = intel_framebuffer_init(dev, &ifbdev->ifb, &mode_cmd, obj);
-		if (ret) {
-			drm_gem_object_unreference(&obj->base);
-			kfree(ifbdev);
-			continue;
-		}
-
-		info = intelfb_create_info(ifbdev);
-		if (info == NULL) {
-			drm_gem_object_unreference(&obj->base);
-			kfree(ifbdev);
-			continue;
-		}
-
-		crtc->base.fb = &ifbdev->ifb.base;
-		obj->pin_count++;
-		ifbdev->bios_fb = true;
-
-		drm_fb_helper_single_add_all_connectors(&ifbdev->helper);
-		drm_fb_helper_initial_config(&ifbdev->helper, bpp);
-
-		vga_switcheroo_client_fb_set(dev->pdev, info);
-		dev_priv->fbdev = ifbdev;
-
-		DRM_DEBUG_KMS("using BIOS config for initial console\n");
-
-		return;
 	}
 
+	if (!obj_size) {
+		DRM_DEBUG_KMS("no active pipes found, not using BIOS config\n");
+		goto out_fail;
+	}
+
+	ifbdev = kzalloc(sizeof(struct intel_fbdev), GFP_KERNEL);
+	if (!ifbdev) {
+		DRM_DEBUG_KMS("failed to alloc intel fbdev\n");
+		goto out_fail;
+	}
+
+	ifbdev->helper.funcs = &intel_fb_helper_funcs;
+	ret = drm_fb_helper_init(dev, &ifbdev->helper,
+				 dev_priv->num_pipe,
+				 INTELFB_CONN_LIMIT);
+	if (ret) {
+		DRM_DEBUG_KMS("drm fb init failed\n");
+		goto out_free_ifbdev;
+	}
+
+	/* assume a 1:1 linear mapping between stolen and GTT */
+	obj = i915_gem_object_create_stolen_for_preallocated(dev, obj_offset,
+							     obj_offset,
+							     obj_size);
+	if (obj == NULL) {
+		DRM_DEBUG_KMS("failed to create stolen fb\n");
+		goto out_free_ifbdev;
+	}
+
+	ret = intel_framebuffer_init(dev, &ifbdev->ifb, &mode_cmd, obj);
+	if (ret) {
+		DRM_DEBUG_KMS("intel fb init failed\n");
+		goto out_unref_obj;
+	}
+
+	info = intelfb_create_info(ifbdev);
+	if (info == NULL) {
+		DRM_DEBUG_KMS("intelfb fb creation failed\n");
+		goto out_unref_obj;
+	}
+
+	/* FIXME: omit any crtcs left out in the above loop */
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+		if (!intel_crtc->active)
+			continue;
+
+		crtc->fb = &ifbdev->ifb.base;
+		obj->pin_count++;
+	}
+	ifbdev->bios_fb = true;
+
+	drm_fb_helper_single_add_all_connectors(&ifbdev->helper);
+	drm_fb_helper_initial_config(&ifbdev->helper, last_bpp);
+
+	vga_switcheroo_client_fb_set(dev->pdev, info);
+	dev_priv->fbdev = ifbdev;
+
+	DRM_DEBUG_KMS("using BIOS config for initial console\n");
+
+	return;
+
+out_unref_obj:
+	drm_gem_object_unreference(&obj->base);
+out_free_ifbdev:
+	kfree(ifbdev);
+out_fail:
 	/* otherwise disable all the possible crtcs before KMS */
-	DRM_DEBUG_KMS("No active planes found\n");
 	drm_helper_disable_unused_functions(dev);
 }
 
