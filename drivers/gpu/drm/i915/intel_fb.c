@@ -292,6 +292,69 @@ static void intel_fbdev_destroy(struct drm_device *dev,
 	}
 }
 
+static bool
+_drm_is_crtc_connected(struct drm_device *dev, struct drm_crtc *crtc)
+{
+	struct drm_connector *connector;
+
+	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
+		if (connector->encoder == NULL)
+			continue;
+
+		if (connector->status != connector_status_connected)
+			continue;
+
+		if (connector->encoder->crtc == crtc)
+			return true;
+	}
+
+	return false;
+}
+
+static void
+_drm_encoder_disable(struct drm_encoder *encoder)
+{
+	struct drm_encoder_helper_funcs *encoder_funcs = encoder->helper_private;
+
+	if (encoder_funcs->disable)
+		(*encoder_funcs->disable)(encoder);
+	else
+		(*encoder_funcs->dpms)(encoder, DRM_MODE_DPMS_OFF);
+}
+
+static void
+_drm_crtc_disable(struct drm_crtc *crtc)
+{
+	struct drm_crtc_helper_funcs *crtc_funcs = crtc->helper_private;
+
+	if (crtc_funcs->disable)
+		(*crtc_funcs->disable)(crtc);
+	else
+		(*crtc_funcs->dpms)(crtc, DRM_MODE_DPMS_OFF);
+
+	crtc->enabled = false;
+	crtc->fb = NULL;
+}
+
+static void
+_drm_disconnect_crtc(struct drm_device *dev, struct drm_crtc *crtc)
+{
+	struct drm_connector *connector;
+
+	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
+		if (connector->encoder == NULL)
+			continue;
+
+		if (connector->encoder->crtc == crtc) {
+			_drm_encoder_disable(connector->encoder);
+			connector->encoder->crtc = NULL;
+			connector->encoder = NULL;
+		}
+	}
+
+	_drm_crtc_disable(crtc);
+}
+
 /*
  * Try to read the BIOS display configuration and use it for the initial
  * fb configuration.
@@ -329,8 +392,12 @@ void intel_fbdev_init_bios(struct drm_device *dev)
 		u32 val, bpp, depth, offset;
 		int pitch, width, height, size;
 
-		if (!intel_crtc->active) {
+		if (!intel_crtc->active || !_drm_is_crtc_connected(dev, crtc)) {
+disable_pipe:
 			DRM_DEBUG_KMS("pipe %d not active, skipping\n", pipe);
+			intel_crtc->active = true; /* force disabling */
+			_drm_disconnect_crtc(dev, crtc);
+			intel_crtc->active = false; /* BUG_ON? */
 			continue;
 		}
 
@@ -339,7 +406,7 @@ void intel_fbdev_init_bios(struct drm_device *dev)
 		if (INTEL_INFO(dev)->gen >= 4) {
 			if (val & DISPPLANE_TILED) {
 				DRM_DEBUG_KMS("tiled BIOS fb?\n");
-				continue; /* unexpected! */
+				goto disable_pipe; /* unexpected! */
 			}
 		}
 
@@ -368,7 +435,7 @@ void intel_fbdev_init_bios(struct drm_device *dev)
 			DRM_DEBUG_KMS("pipe %d has depth/bpp mismatch: "
 				      "(%d/%d vs %d/%d), skipping\n",
 				      pipe, bpp, depth, last_bpp, last_depth);
-			continue;
+			goto disable_pipe;
 		}
 
 		last_bpp = bpp;
@@ -473,6 +540,8 @@ out_free_ifbdev:
 out_fail:
 	/* otherwise disable all the possible crtcs before KMS */
 	drm_helper_disable_unused_functions(dev);
+	if (HAS_PCH_SPLIT(dev))
+		ironlake_init_pch_refclk(dev);
 }
 
 int intel_fbdev_init(struct drm_device *dev)
