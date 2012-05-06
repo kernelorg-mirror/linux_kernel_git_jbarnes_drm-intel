@@ -261,7 +261,7 @@ static bool intel_fb_initial_config(struct drm_fb_helper *fb_helper,
 	return true;
 }
 
-static struct drm_fb_helper_funcs intel_fb_helper_funcs = {
+static const struct drm_fb_helper_funcs intel_fb_helper_funcs = {
 	.gamma_set = intel_crtc_fb_gamma_set,
 	.gamma_get = intel_crtc_fb_gamma_get,
 	.fb_probe = intel_fb_find_or_create_single,
