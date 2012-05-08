@@ -4708,6 +4708,7 @@ void __sched io_schedule(void)
 	delayacct_blkio_start();
 	atomic_inc(&rq->nr_iowait);
 	blk_flush_plug(current);
+	WARN_ON(current->in_iowait);
 	current->in_iowait = 1;
 	schedule();
 	current->in_iowait = 0;
@@ -4731,6 +4732,38 @@ long __sched io_schedule_timeout(long timeout)
 	delayacct_blkio_end();
 	return ret;
 }
+
+/*
+ * gpu_wait_begin/end
+ *
+ * Mark the task as stalling for an offload engine (most often a gpu). Waits
+ * done in-between will be accounted as performance-critical sections and
+ * prevent the ondemand cpu governor from clocking down the cpu.
+ *
+ * Calls may not nest.
+ */
+int gpu_wait_begin(void)
+{
+	int cpu = smp_processor_id();
+	struct rq *rq = cpu_rq(cpu);
+
+	atomic_inc(&rq->nr_iowait);
+	WARN_ON(current->in_iowait);
+	current->in_iowait = 1;
+
+	return cpu;
+}
+EXPORT_SYMBOL(gpu_wait_begin);
+
+void gpu_wait_end(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+
+	atomic_dec(&rq->nr_iowait);
+	WARN_ON(!current->in_iowait);
+	current->in_iowait = 0;
+}
+EXPORT_SYMBOL(gpu_wait_end);
 
 /**
  * sys_sched_get_priority_max - return maximum RT priority.

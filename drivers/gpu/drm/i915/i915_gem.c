@@ -2044,6 +2044,7 @@ static int __wait_seqno(struct intel_ring_buffer *ring,
 {
 	drm_i915_private_t *dev_priv = ring->dev->dev_private;
 	int ret;
+	int cpu;
 
 	if (i915_seqno_passed(ring->last_seqno, seqno))
 		return 0;
@@ -2051,6 +2052,7 @@ static int __wait_seqno(struct intel_ring_buffer *ring,
 	if (WARN_ON(!ring->irq_get(ring)))
 		return -ENODEV;
 
+	cpu = gpu_wait_begin();
 #define EXIT_COND \
 	(i915_seqno_passed(ring->get_seqno(ring), seqno) || \
 	atomic_read(&dev_priv->mm.wedged))
@@ -2063,6 +2065,7 @@ static int __wait_seqno(struct intel_ring_buffer *ring,
 		wait_event(ring->irq_queue, EXIT_COND);
 	trace_i915_gem_request_wait_end(ring, seqno);
 
+	gpu_wait_end(cpu);
 	ring->irq_put(ring);
 
 	if (atomic_read(&dev_priv->mm.wedged))

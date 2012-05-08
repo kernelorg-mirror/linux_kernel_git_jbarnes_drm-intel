@@ -301,6 +301,9 @@ extern void show_stack(struct task_struct *task, unsigned long *sp);
 void io_schedule(void);
 long io_schedule_timeout(long timeout);
 
+int gpu_wait_begin(void);
+void gpu_wait_end(int cpu);
+
 extern void cpu_init (void);
 extern void trap_init(void);
 extern void update_process_times(int user);
