@@ -1574,6 +1574,7 @@ EXPORT_SYMBOL(intel_gtt_get);
 
 void intel_gtt_chipset_flush(void)
 {
+	wmb();
 	if (intel_private.driver->chipset_flush)
 		intel_private.driver->chipset_flush();
 }
