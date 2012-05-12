@@ -219,6 +219,7 @@ static int i810_insert_dcache_entries(struct agp_memory *mem, off_t pg_start,
 	if (!mem->is_flushed)
 		global_cache_flush();
 
+	mb();
 	for (i = pg_start; i < (pg_start + mem->page_count); i++) {
 		dma_addr_t addr = i << PAGE_SHIFT;
 		intel_private.driver->write_entry(addr,
@@ -887,6 +888,8 @@ void intel_gtt_insert_sg_entries(struct scatterlist *sg_list,
 	unsigned int len, m;
 	int i, j;
 
+	mb();
+
 	j = pg_start;
 
 	/* sg may merge pages, but we have to separate
@@ -908,6 +911,8 @@ void intel_gtt_insert_pages(unsigned int first_entry, unsigned int num_entries,
 			    struct page **pages, unsigned int flags)
 {
 	int i, j;
+
+	mb();
 
 	for (i = 0, j = first_entry; i < num_entries; i++, j++) {
 		dma_addr_t addr = page_to_phys(pages[i]);
@@ -973,6 +978,8 @@ out_err:
 void intel_gtt_clear_range(unsigned int first_entry, unsigned int num_entries)
 {
 	unsigned int i;
+
+	mb();
 
 	for (i = first_entry; i < (first_entry + num_entries); i++) {
 		intel_private.driver->write_entry(intel_private.base.scratch_page_dma,
