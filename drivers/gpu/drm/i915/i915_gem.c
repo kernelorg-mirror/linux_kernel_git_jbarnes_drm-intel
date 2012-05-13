@@ -968,10 +968,7 @@ i915_gem_set_domain_ioctl(struct drm_device *dev, void *data,
 	int ret;
 
 	/* Only handle setting domains to types used by the CPU. */
-	if (write_domain & I915_GEM_GPU_DOMAINS)
-		return -EINVAL;
-
-	if (read_domains & I915_GEM_GPU_DOMAINS)
+	if ((read_domains | write_domain) & I915_GEM_GPU_DOMAINS)
 		return -EINVAL;
 
 	/* Having something in the write domain implies it's in the read

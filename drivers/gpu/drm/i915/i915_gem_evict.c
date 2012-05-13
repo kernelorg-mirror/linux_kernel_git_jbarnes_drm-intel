@@ -97,19 +97,6 @@ i915_gem_evict_something(struct drm_device *dev, int min_size,
 
 	/* Now merge in the soon-to-be-expired objects... */
 	list_for_each_entry(obj, &dev_priv->mm.active_list, mm_list) {
-		/* Does the object require an outstanding flush? */
-		if (obj->base.write_domain)
-			continue;
-
-		if (mark_free(obj, &unwind_list))
-			goto found;
-	}
-
-	/* Finally add anything still active (in order of retirement) */
-	list_for_each_entry(obj, &dev_priv->mm.active_list, mm_list) {
-		if (!obj->base.write_domain)
-			continue;
-
 		if (mark_free(obj, &unwind_list))
 			goto found;
 	}
