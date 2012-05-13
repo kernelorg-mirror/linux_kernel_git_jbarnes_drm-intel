@@ -1635,7 +1635,7 @@ i915_gem_object_move_to_inactive(struct drm_i915_gem_object *obj)
 	obj->fenced_gpu_access = false;
 
 	obj->active = 0;
-	obj->pending_gpu_write = false;
+	obj->base.write_domain = 0;
 	drm_gem_object_unreference(&obj->base);
 
 	WARN_ON(i915_verify_lists(dev));
@@ -3041,7 +3041,7 @@ i915_gem_object_flush_gpu__blocking(struct drm_i915_gem_object *obj,
 	if (ret)
 		return ret;
 
-	if (for_cpu_write || obj->pending_gpu_write)
+	if (for_cpu_write || obj->base.write_domain)
 		return i915_gem_object_wait_rendering(obj);
 
 	return 0;
@@ -3057,7 +3057,7 @@ i915_gem_object_flush_gpu(struct drm_i915_gem_object *obj,
 	if (ret)
 		return ret;
 
-	if (obj->active && (for_cpu_write || obj->pending_gpu_write)) {
+	if (obj->active && (for_cpu_write || obj->base.write_domain)) {
 		struct intel_ring_buffer *ring = obj->ring;
 		u32 seqno = obj->last_rendering_seqno;
 
