@@ -1761,7 +1761,6 @@ static void i915_gem_reset_ring_lists(struct drm_i915_private *dev_priv,
 				       struct drm_i915_gem_object,
 				       ring_list);
 
-		obj->base.write_domain = 0;
 		i915_gem_object_move_to_inactive(obj);
 	}
 }
