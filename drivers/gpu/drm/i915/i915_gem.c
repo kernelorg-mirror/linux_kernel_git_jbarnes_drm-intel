@@ -1620,18 +1620,6 @@ i915_gem_object_move_off_active(struct drm_i915_gem_object *obj)
 }
 
 static void
-i915_gem_object_move_to_flushing(struct drm_i915_gem_object *obj)
-{
-	struct drm_device *dev = obj->base.dev;
-	drm_i915_private_t *dev_priv = dev->dev_private;
-
-	BUG_ON(!obj->active);
-	list_move_tail(&obj->mm_list, &dev_priv->mm.flushing_list);
-
-	i915_gem_object_move_off_active(obj);
-}
-
-static void
 i915_gem_object_move_to_inactive(struct drm_i915_gem_object *obj)
 {
 	struct drm_device *dev = obj->base.dev;
@@ -1835,20 +1823,6 @@ void i915_gem_reset(struct drm_device *dev)
 	for_each_ring(ring, dev_priv, i)
 		i915_gem_reset_ring_lists(dev_priv, ring);
 
-	/* Remove anything from the flushing lists. The GPU cache is likely
-	 * to be lost on reset along with the data, so simply move the
-	 * lost bo to the inactive list.
-	 */
-	while (!list_empty(&dev_priv->mm.flushing_list)) {
-		obj = list_first_entry(&dev_priv->mm.flushing_list,
-				      struct drm_i915_gem_object,
-				      mm_list);
-
-		obj->base.write_domain = 0;
-		list_del_init(&obj->gpu_write_list);
-		i915_gem_object_move_to_inactive(obj);
-	}
-
 	/* Move everything out of the GPU domains to ensure we do any
 	 * necessary invalidation upon reuse.
 	 */
@@ -1924,10 +1898,7 @@ i915_gem_retire_requests_ring(struct intel_ring_buffer *ring, u32 seqno)
 		if (!i915_seqno_passed(seqno, obj->last_rendering_seqno))
 			break;
 
-		if (obj->base.write_domain != 0)
-			i915_gem_object_move_to_flushing(obj);
-		else
-			i915_gem_object_move_to_inactive(obj);
+		i915_gem_object_move_to_inactive(obj);
 	}
 
 	if (unlikely(ring->trace_irq_seqno &&
@@ -4079,7 +4050,6 @@ i915_gem_entervt_ioctl(struct drm_device *dev, void *data,
 	}
 
 	BUG_ON(!list_empty(&dev_priv->mm.active_list));
-	BUG_ON(!list_empty(&dev_priv->mm.flushing_list));
 	BUG_ON(!list_empty(&dev_priv->mm.inactive_list));
 	mutex_unlock(&dev->struct_mutex);
 
@@ -4135,7 +4105,6 @@ i915_gem_load(struct drm_device *dev)
 				  NULL);
 
 	INIT_LIST_HEAD(&dev_priv->mm.active_list);
-	INIT_LIST_HEAD(&dev_priv->mm.flushing_list);
 	INIT_LIST_HEAD(&dev_priv->mm.inactive_list);
 	INIT_LIST_HEAD(&dev_priv->mm.unbound_list);
 	INIT_LIST_HEAD(&dev_priv->mm.fence_list);
