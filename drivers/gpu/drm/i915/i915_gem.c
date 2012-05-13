@@ -1641,30 +1641,6 @@ i915_gem_object_move_to_inactive(struct drm_i915_gem_object *obj)
 	WARN_ON(i915_verify_lists(dev));
 }
 
-static void
-i915_gem_process_flushing_list(struct intel_ring_buffer *ring,
-			       uint32_t flush_domains)
-{
-	struct drm_i915_gem_object *obj, *next;
-
-	list_for_each_entry_safe(obj, next,
-				 &ring->gpu_write_list,
-				 gpu_write_list) {
-		if (obj->base.write_domain & flush_domains) {
-			uint32_t old_write_domain = obj->base.write_domain;
-
-			obj->base.write_domain = 0;
-			list_del_init(&obj->gpu_write_list);
-			i915_gem_object_move_to_active(obj, ring,
-						       i915_gem_next_request_seqno(ring));
-
-			trace_i915_gem_object_change_domain(obj,
-							    obj->base.read_domains,
-							    old_write_domain);
-		}
-	}
-}
-
 static u32
 i915_gem_get_seqno(struct drm_device *dev)
 {
@@ -2334,9 +2310,6 @@ i915_gem_flush_ring(struct intel_ring_buffer *ring,
 	ret = ring->flush(ring, invalidate_domains, flush_domains);
 	if (ret)
 		return ret;
-
-	if (flush_domains & I915_GEM_GPU_DOMAINS)
-		i915_gem_process_flushing_list(ring, flush_domains);
 
 	return 0;
 }
