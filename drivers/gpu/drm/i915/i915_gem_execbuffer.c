@@ -805,7 +805,7 @@ i915_gem_execbuffer_flush(struct intel_ring_buffer *ring,
 		wmb();
 
 	if (cd->invalidate_domains & I915_GEM_GPU_DOMAINS)
-		ret = i915_gem_flush_ring(ring, cd->invalidate_domains, 0);
+		ret = ring->flush(ring, cd->invalidate_domains, 0);
 
 	return ret;
 }
@@ -841,7 +841,6 @@ i915_gem_execbuffer_wait_for_flips(struct intel_ring_buffer *ring, u32 flips)
 
 	return 0;
 }
-
 
 static int
 i915_gem_execbuffer_move_to_gpu(struct intel_ring_buffer *ring,

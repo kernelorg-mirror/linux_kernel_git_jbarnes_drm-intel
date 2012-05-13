@@ -36,7 +36,6 @@
 #include <linux/swap.h>
 #include <linux/pci.h>
 
-static __must_check int i915_gem_object_flush_gpu_write_domain(struct drm_i915_gem_object *obj);
 static void i915_gem_object_flush_gtt_write_domain(struct drm_i915_gem_object *obj);
 static void i915_gem_object_flush_cpu_write_domain(struct drm_i915_gem_object *obj,
 						   bool flush);
@@ -2080,11 +2079,6 @@ i915_gem_object_wait_rendering(struct drm_i915_gem_object *obj)
 {
 	int ret;
 
-	/* This function only exists to support waiting for existing rendering,
-	 * not for emitting required flushes.
-	 */
-	BUG_ON((obj->base.write_domain & I915_GEM_GPU_DOMAINS) != 0);
-
 	/* If there is rendering queued on the buffer being evicted, wait for
 	 * it.
 	 */
@@ -2122,14 +2116,6 @@ i915_gem_wait_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 		mutex_unlock(&dev->struct_mutex);
 		return -ENOENT;
 	}
-
-	/* Need to make sure the object is flushed first. This non-obvious
-	 * flush is required to enforce that (active && !olr) == no wait
-	 * necessary.
-	 */
-	ret = i915_gem_object_flush_gpu_write_domain(obj);
-	if (ret)
-		goto out;
 
 	if (obj->active) {
 		seqno = obj->last_rendering_seqno;
@@ -2275,25 +2261,6 @@ i915_gem_object_unbind(struct drm_i915_gem_object *obj)
 
 	if (obj->base.read_domains & I915_GEM_DOMAIN_CPU)
 		i915_gem_object_put_pages(obj);
-
-	return 0;
-}
-
-int
-i915_gem_flush_ring(struct intel_ring_buffer *ring,
-		    uint32_t invalidate_domains,
-		    uint32_t flush_domains)
-{
-	int ret;
-
-	if (((invalidate_domains | flush_domains) & I915_GEM_GPU_DOMAINS) == 0)
-		return 0;
-
-	trace_i915_gem_ring_flush(ring, invalidate_domains, flush_domains);
-
-	ret = ring->flush(ring, invalidate_domains, flush_domains);
-	if (ret)
-		return ret;
 
 	return 0;
 }
@@ -2501,16 +2468,7 @@ i915_gem_object_flush_fence(struct drm_i915_gem_object *obj)
 {
 	int ret;
 
-	if (obj->fenced_gpu_access) {
-		if (obj->base.write_domain & I915_GEM_GPU_DOMAINS) {
-			ret = i915_gem_flush_ring(obj->ring,
-						  0, obj->base.write_domain);
-			if (ret && ret != -EIO)
-				return ret;
-		}
-
-		obj->fenced_gpu_access = false;
-	}
+	obj->fenced_gpu_access = false;
 
 	if (obj->last_fenced_seqno) {
 		ret = i915_wait_seqno(obj->ring, obj->last_fenced_seqno);
@@ -2940,17 +2898,6 @@ i915_gem_clflush_object(struct drm_i915_gem_object *obj)
 	return true;
 }
 
-/** Flushes any GPU write domain for the object if it's dirty. */
-static int
-i915_gem_object_flush_gpu_write_domain(struct drm_i915_gem_object *obj)
-{
-	if ((obj->base.write_domain & I915_GEM_GPU_DOMAINS) == 0)
-		return 0;
-
-	/* Queue the GPU write cache flushing we need. */
-	return i915_gem_flush_ring(obj->ring, 0, obj->base.write_domain);
-}
-
 /** Flushes the GTT write domain for the object if it's dirty. */
 static void
 i915_gem_object_flush_gtt_write_domain(struct drm_i915_gem_object *obj)
@@ -3005,30 +2952,10 @@ i915_gem_object_flush_cpu_write_domain(struct drm_i915_gem_object *obj,
 }
 
 static int
-i915_gem_object_flush_gpu__blocking(struct drm_i915_gem_object *obj,
-				    bool for_cpu_write)
-{
-	int ret;
-
-	ret = i915_gem_object_flush_gpu_write_domain(obj);
-	if (ret)
-		return ret;
-
-	if (for_cpu_write || obj->base.write_domain)
-		return i915_gem_object_wait_rendering(obj);
-
-	return 0;
-}
-
-static int
 i915_gem_object_flush_gpu(struct drm_i915_gem_object *obj,
 			  bool for_cpu_write)
 {
 	int ret;
-
-	ret = i915_gem_object_flush_gpu_write_domain(obj);
-	if (ret)
-		return ret;
 
 	if (obj->active && (for_cpu_write || obj->base.write_domain)) {
 		struct intel_ring_buffer *ring = obj->ring;
@@ -3052,7 +2979,8 @@ i915_gem_object_flush_gpu(struct drm_i915_gem_object *obj,
 
 		/* Were we re-queued? Block until it is our turn. */
 		i915_gem_retire_requests_ring(ring, seqno);
-		return i915_gem_object_flush_gpu__blocking(obj, for_cpu_write);
+		if (for_cpu_write || obj->base.write_domain)
+			return i915_gem_object_wait_rendering(obj);
 	}
 
 	return 0;
@@ -3194,10 +3122,6 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	u32 old_read_domains, old_write_domain;
 	int ret;
 
-	ret = i915_gem_object_flush_gpu_write_domain(obj);
-	if (ret)
-		return ret;
-
 	if (pipelined != obj->ring) {
 		ret = i915_gem_object_sync(obj, pipelined);
 		if (ret)
@@ -3250,12 +3174,6 @@ i915_gem_object_finish_gpu(struct drm_i915_gem_object *obj)
 
 	if ((obj->base.read_domains & I915_GEM_GPU_DOMAINS) == 0)
 		return 0;
-
-	if (obj->base.write_domain & I915_GEM_GPU_DOMAINS) {
-		ret = i915_gem_flush_ring(obj->ring, 0, obj->base.write_domain);
-		if (ret && ret != -EIO)
-			return ret;
-	}
 
 	ret = i915_gem_object_wait_rendering(obj);
 	if (ret && ret != -EIO)
@@ -3529,18 +3447,7 @@ i915_gem_busy_ioctl(struct drm_device *dev, void *data,
 	if (args->busy) {
 		u32 seqno;
 
-		/* Unconditionally flush objects, even when the gpu still uses this
-		 * object. Userspace calling this function indicates that it wants to
-		 * use this buffer rather sooner than later, so issuing the required
-		 * flush earlier is beneficial.
-		 */
-		if (obj->base.write_domain & I915_GEM_GPU_DOMAINS) {
-			ret = i915_gem_flush_ring(obj->ring,
-						  0, obj->base.write_domain);
-		} else {
-			ret = i915_gem_check_olr(obj->ring,
-						 obj->last_rendering_seqno);
-		}
+		ret = i915_gem_check_olr(obj->ring, obj->last_rendering_seqno);
 
 		/* Update the active list for the hardware's current
 		 * position.  Otherwise this only updates on a delayed
