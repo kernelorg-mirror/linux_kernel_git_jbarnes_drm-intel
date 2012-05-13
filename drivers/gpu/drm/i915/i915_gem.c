@@ -3128,7 +3128,6 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 				     u32 alignment,
 				     struct intel_ring_buffer *pipelined)
 {
-	u32 old_read_domains, old_write_domain;
 	int ret;
 
 	if (pipelined != obj->ring) {
@@ -3159,20 +3158,6 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 		return ret;
 
 	i915_gem_object_flush_cpu_write_domain(obj, true);
-
-	old_write_domain = obj->base.write_domain;
-	old_read_domains = obj->base.read_domains;
-
-	/* It should now be out of any other write domains, and we can update
-	 * the domain values for our changes.
-	 */
-	BUG_ON((obj->base.write_domain & ~I915_GEM_DOMAIN_GTT) != 0);
-	obj->base.read_domains |= I915_GEM_DOMAIN_GTT;
-
-	trace_i915_gem_object_change_domain(obj,
-					    old_read_domains,
-					    old_write_domain);
-
 	return 0;
 }
 
