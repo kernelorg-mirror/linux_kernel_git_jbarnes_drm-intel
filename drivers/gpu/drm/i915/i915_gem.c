@@ -1091,8 +1091,8 @@ int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	pgoff_t page_offset;
 	unsigned long pfn;
-	int ret = 0;
 	bool write = !!(vmf->flags & FAULT_FLAG_WRITE);
+	int ret, prefault;
 
 	/* We don't use vmf->pgoff since that has the fake offset */
 	page_offset = ((unsigned long)vmf->virtual_address - vma->vm_start) >>
@@ -1137,6 +1137,18 @@ int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 
 	/* Finally, remap it using the new GTT offset */
 	ret = vm_insert_pfn(vma, (unsigned long)vmf->virtual_address, pfn);
+	if (ret)
+		goto unlock;
+
+	prefault = 16;
+	if (page_offset + prefault >= obj->base.size >> PAGE_SHIFT)
+		prefault = (obj->base.size >> PAGE_SHIFT) - page_offset - 1;
+	page_offset = vmf->virtual_address;
+	while (prefault--) {
+		page_offset += PAGE_SIZE; pfn++;
+		if (vm_insert_pfn(vma, page_offset, pfn))
+			break;
+	}
 unlock:
 	mutex_unlock(&dev->struct_mutex);
 out:
