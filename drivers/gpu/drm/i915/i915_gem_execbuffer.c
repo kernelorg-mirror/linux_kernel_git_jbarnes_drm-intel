@@ -942,9 +942,8 @@ i915_gem_execbuffer_move_to_active(struct list_head *objects,
 	struct drm_i915_gem_object *obj;
 
 	list_for_each_entry(obj, objects, exec_list) {
-		  u32 old_read = obj->base.read_domains;
-		  u32 old_write = obj->base.write_domain;
-
+		u32 old_read = obj->base.read_domains;
+		u32 old_write = obj->base.write_domain;
 
 		obj->base.read_domains = obj->base.pending_read_domains;
 		obj->base.write_domain = obj->base.pending_write_domain;
@@ -953,8 +952,6 @@ i915_gem_execbuffer_move_to_active(struct list_head *objects,
 		i915_gem_object_move_to_active(obj, ring, seqno);
 		if (obj->base.write_domain) {
 			obj->dirty = 1;
-			list_move_tail(&obj->gpu_write_list,
-				       &ring->gpu_write_list);
 			if (obj->pin_count) /* check for potential scanout */
 				intel_mark_fb_busy(obj);
 		}

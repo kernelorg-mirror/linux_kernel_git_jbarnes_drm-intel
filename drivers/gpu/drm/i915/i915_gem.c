@@ -1627,7 +1627,6 @@ i915_gem_object_move_to_inactive(struct drm_i915_gem_object *obj)
 
 	list_move_tail(&obj->mm_list, &dev_priv->mm.inactive_list);
 
-	BUG_ON(!list_empty(&obj->gpu_write_list));
 	BUG_ON(!obj->active);
 	obj->ring = NULL;
 
@@ -1763,7 +1762,6 @@ static void i915_gem_reset_ring_lists(struct drm_i915_private *dev_priv,
 				       ring_list);
 
 		obj->base.write_domain = 0;
-		list_del_init(&obj->gpu_write_list);
 		i915_gem_object_move_to_inactive(obj);
 	}
 }
@@ -1911,19 +1909,6 @@ i915_gem_retire_work_handler(struct work_struct *work)
 	idle = true;
 	for_each_ring(ring, dev_priv, i) {
 		i915_gem_retire_requests_ring(ring, ring->last_seqno);
-
-		if (!list_empty(&ring->gpu_write_list)) {
-			struct drm_i915_gem_request *request;
-			int ret;
-
-			ret = i915_gem_flush_ring(ring,
-						  0, I915_GEM_GPU_DOMAINS);
-			request = kzalloc(sizeof(*request), GFP_KERNEL);
-			if (ret || request == NULL ||
-			    i915_add_request(ring, NULL, request))
-			    kfree(request);
-		}
-
 		idle &= list_empty(&ring->request_list);
 	}
 
@@ -2319,15 +2304,8 @@ static int i915_ring_idle(struct intel_ring_buffer *ring)
 	u32 seqno;
 	int ret;
 
-	if (list_empty(&ring->gpu_write_list) && list_empty(&ring->active_list))
+	if (list_empty(&ring->active_list))
 		return 0;
-
-	if (!list_empty(&ring->gpu_write_list)) {
-		ret = i915_gem_flush_ring(ring,
-				    I915_GEM_GPU_DOMAINS, I915_GEM_GPU_DOMAINS);
-		if (ret)
-			return ret;
-	}
 
 	seqno = i915_gem_next_request_seqno(ring);
 
@@ -2350,10 +2328,6 @@ int i915_gpu_idle(struct drm_device *dev)
 		ret = i915_ring_idle(ring);
 		if (ret && ret != -EIO)
 			return ret;
-
-		/* Is the device fubar? */
-		if (WARN_ON(!list_empty(&ring->gpu_write_list)))
-			return -EBUSY;
 	}
 
 	return 0;
@@ -3651,7 +3625,6 @@ i915_gem_object_init(struct drm_i915_gem_object *obj,
 	INIT_LIST_HEAD(&obj->gtt_list);
 	INIT_LIST_HEAD(&obj->ring_list);
 	INIT_LIST_HEAD(&obj->exec_list);
-	INIT_LIST_HEAD(&obj->gpu_write_list);
 
 	obj->fence_reg = I915_FENCE_REG_NONE;
 	obj->madv = I915_MADV_WILLNEED;
