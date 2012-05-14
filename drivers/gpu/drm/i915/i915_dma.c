@@ -1334,7 +1334,8 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	if (ret)
 		goto cleanup_irq;
 
-	drm_kms_helper_poll_init(dev);
+	if (intel_mode_needs_polling(dev))
+		drm_kms_helper_poll_init(dev);
 
 	/* We're off and running w/KMS */
 	dev_priv->mm.suspended = 0;

@@ -517,4 +517,6 @@ extern void intel_ddi_mode_set(struct drm_encoder *encoder,
 				struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode);
 
+extern bool intel_mode_needs_polling(struct drm_device *dev);
+
 #endif /* __INTEL_DRV_H__ */

@@ -7227,6 +7227,18 @@ int intel_modeset_vga_set_state(struct drm_device *dev, bool state)
 	return 0;
 }
 
+bool intel_mode_needs_polling(struct drm_device *dev)
+{
+	struct drm_connector *connector;
+
+	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
+		if (connector->polled & ~DRM_CONNECTOR_POLL_HPD)
+			return true;
+	}
+
+	return false;
+}
+
 #ifdef CONFIG_DEBUG_FS
 #include <linux/seq_file.h>
 
