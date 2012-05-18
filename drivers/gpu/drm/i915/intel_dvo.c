@@ -327,7 +327,7 @@ intel_dvo_get_current_mode(struct drm_connector *connector)
 
 		crtc = intel_get_crtc_for_pipe(dev, pipe);
 		if (crtc) {
-			mode = intel_crtc_mode_get(dev, crtc);
+			mode = intel_crtc_mode_get(crtc);
 			if (mode) {
 				mode->type |= DRM_MODE_TYPE_PREFERRED;
 				if (dvo_val & DVO_HSYNC_ACTIVE_HIGH)

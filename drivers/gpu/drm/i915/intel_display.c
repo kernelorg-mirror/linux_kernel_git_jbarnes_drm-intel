@@ -5724,9 +5724,9 @@ static int intel_crtc_clock_get(struct drm_device *dev, struct drm_crtc *crtc)
 }
 
 /** Returns the currently programmed mode of the given pipe. */
-struct drm_display_mode *intel_crtc_mode_get(struct drm_device *dev,
-					     struct drm_crtc *crtc)
+struct drm_display_mode *intel_crtc_mode_get(struct drm_crtc *crtc)
 {
+	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
@@ -6486,7 +6486,7 @@ static void intel_crtc_get_config(struct drm_crtc *crtc)
 	u32 val, pixformat;
 	bool tiled;
 
-	mode = intel_crtc_mode_get(dev, crtc);
+	mode = intel_crtc_mode_get(crtc);
 	crtc->mode = *mode;
 	kfree(mode);
 	crtc->enabled = drm_helper_crtc_in_use(crtc);

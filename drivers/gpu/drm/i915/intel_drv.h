@@ -411,8 +411,7 @@ extern void intel_connector_attach_encoder(struct intel_connector *connector,
 					   struct intel_encoder *encoder);
 extern struct drm_encoder *intel_best_encoder(struct drm_connector *connector);
 
-extern struct drm_display_mode *intel_crtc_mode_get(struct drm_device *dev,
-						    struct drm_crtc *crtc);
+extern struct drm_display_mode *intel_crtc_mode_get(struct drm_crtc *crtc);
 int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
 extern void intel_wait_for_vblank(struct drm_device *dev, int pipe);

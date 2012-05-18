@@ -1072,7 +1072,7 @@ bool intel_lvds_init(struct drm_device *dev)
 	crtc = intel_get_crtc_for_pipe(dev, pipe);
 
 	if (crtc && (lvds & LVDS_PORT_EN)) {
-		intel_lvds->fixed_mode = intel_crtc_mode_get(dev, crtc);
+		intel_lvds->fixed_mode = intel_crtc_mode_get(crtc);
 		if (intel_lvds->fixed_mode) {
 			intel_lvds->fixed_mode->type |=
 				DRM_MODE_TYPE_PREFERRED;
