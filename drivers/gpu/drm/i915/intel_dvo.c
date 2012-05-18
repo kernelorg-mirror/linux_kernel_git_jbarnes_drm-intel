@@ -363,6 +363,7 @@ void intel_dvo_init(struct drm_device *dev)
 	intel_encoder = &intel_dvo->base;
 	drm_encoder_init(dev, &intel_encoder->base,
 			 &intel_dvo_enc_funcs, encoder_type);
+	intel_encoder->mode_flags = intel_mode_flags_none;
 
 	/* Now, try to find a controller */
 	for (i = 0; i < ARRAY_SIZE(intel_dvo_devices); i++) {

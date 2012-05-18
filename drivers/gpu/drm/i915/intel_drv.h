@@ -155,6 +155,7 @@ struct intel_encoder {
 	int type;
 	bool needs_tv_clock;
 	void (*hot_plug)(struct intel_encoder *);
+	u32 (*mode_flags)(struct intel_encoder *);
 	int crtc_mask;
 	int clone_mask;
 };
@@ -480,6 +481,7 @@ extern void intel_cpt_verify_modeset(struct drm_device *dev, int pipe);
 extern void intel_prepare_ddi(struct drm_device *dev);
 extern void hsw_fdi_link_train(struct drm_crtc *crtc);
 extern void intel_ddi_init(struct drm_device *dev, enum port port);
+extern u32 intel_mode_flags_none(struct intel_encoder *intel_encoder);
 
 /* For use by IVB LP watermark workaround in intel_sprite.c */
 extern void intel_update_watermarks(struct drm_device *dev);

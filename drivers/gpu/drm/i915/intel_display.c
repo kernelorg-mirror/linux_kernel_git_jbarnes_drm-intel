@@ -5723,6 +5723,33 @@ static int intel_crtc_clock_get(struct drm_device *dev, struct drm_crtc *crtc)
 	return clock.dot;
 }
 
+u32 intel_mode_flags_none(struct intel_encoder *intel_encoder)
+{
+	return 0;
+}
+
+/* Get the sync polarity for the mode on this crtc */
+static u32 intel_crtc_mode_flags(struct drm_crtc *crtc)
+{
+	struct drm_device *dev = crtc->dev;
+	struct drm_connector *connector;
+	struct intel_encoder *intel_encoder;
+
+	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
+		if (connector->status != connector_status_connected ||
+		    !connector->encoder)
+			continue;
+
+		if (connector->encoder->crtc != crtc)
+			continue;
+
+		intel_encoder = to_intel_encoder(connector->encoder);
+		return intel_encoder->mode_flags(intel_encoder);
+	}
+
+	return 0;
+}
+
 /** Returns the currently programmed mode of the given pipe. */
 struct drm_display_mode *intel_crtc_mode_get(struct drm_crtc *crtc)
 {
@@ -5749,7 +5776,7 @@ struct drm_display_mode *intel_crtc_mode_get(struct drm_crtc *crtc)
 	mode->vtotal = ((vtot & 0xffff0000) >> 16) + 1;
 	mode->vsync_start = (vsync & 0xffff) + 1;
 	mode->vsync_end = ((vsync & 0xffff0000) >> 16) + 1;
-	mode->clock = 137500;
+	mode->flags = intel_crtc_mode_flags(crtc);
 
 	drm_mode_set_name(mode);
 

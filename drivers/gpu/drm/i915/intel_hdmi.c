@@ -580,6 +580,29 @@ done:
 	return 0;
 }
 
+static u32 intel_hdmi_mode_flags(struct intel_encoder *intel_encoder)
+{
+	struct drm_device *dev = intel_encoder->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_hdmi *intel_hdmi = container_of(intel_encoder,
+						     struct intel_hdmi, base);
+	u32 val, flags = 0;
+
+	val = I915_READ(intel_hdmi->sdvox_reg);
+
+	if (val & SDVO_HSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PHSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NHSYNC;
+
+	if (val & SDVO_VSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PVSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NVSYNC;
+
+	return flags;
+}
+
 static void intel_hdmi_destroy(struct drm_connector *connector)
 {
 	drm_sysfs_connector_remove(connector);
@@ -743,6 +766,8 @@ void intel_hdmi_init(struct drm_device *dev, int sdvox_reg)
 
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
 	drm_sysfs_connector_add(connector);
+
+	intel_hdmi->base.mode_flags = intel_hdmi_mode_flags;
 
 	/* For G4X desktop chip, PEG_BAND_GAP_DATA 3:0 must first be written
 	 * 0xd.  Failure to do so will result in spurious interrupts being

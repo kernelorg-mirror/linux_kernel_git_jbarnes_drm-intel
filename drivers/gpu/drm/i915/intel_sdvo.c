@@ -2462,6 +2462,32 @@ static bool intel_sdvo_create_enhance_property(struct intel_sdvo *intel_sdvo,
 		return true;
 }
 
+static u32 intel_sdvo_mode_flags(struct intel_encoder *intel_encoder)
+{
+	struct drm_device *dev = intel_encoder->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_sdvo *intel_sdvo = container_of(intel_encoder,
+						     struct intel_sdvo, base);
+	u32 val, flags = 0;
+
+	if (INTEL_INFO(dev)->gen < 4)
+		return 0;
+
+	val = I915_READ(intel_sdvo->sdvo_reg);
+
+	if (val & SDVO_HSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PHSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NHSYNC;
+
+	if (val & SDVO_VSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PVSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NVSYNC;
+
+	return flags;
+}
+
 static int intel_sdvo_ddc_proxy_xfer(struct i2c_adapter *adapter,
 				     struct i2c_msg *msgs,
 				     int num)
@@ -2580,6 +2606,8 @@ bool intel_sdvo_init(struct drm_device *dev, uint32_t sdvo_reg, bool is_sdvob)
 						    &intel_sdvo->pixel_clock_min,
 						    &intel_sdvo->pixel_clock_max))
 		goto err;
+
+	intel_sdvo->base.mode_flags = intel_sdvo_mode_flags;
 
 	DRM_DEBUG_KMS("%s device VID/DID: %02X:%02X.%02X, "
 			"clock range %dMHz - %dMHz, "

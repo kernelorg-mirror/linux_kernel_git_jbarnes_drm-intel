@@ -2336,6 +2336,31 @@ intel_dp_hot_plug(struct intel_encoder *intel_encoder)
 	intel_dp_check_link_status(intel_dp);
 }
 
+static u32
+intel_dp_mode_flags(struct intel_encoder *intel_encoder)
+{
+	struct drm_device *dev = intel_encoder->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_dp *intel_dp = container_of(intel_encoder,
+						 struct intel_dp, base);
+	int reg = intel_dp->output_reg;
+	u32 val, flags = 0;
+
+	val = I915_READ(reg);
+
+	if (val & DP_SYNC_HS_HIGH)
+		flags |= DRM_MODE_FLAG_PHSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NHSYNC;
+
+	if (val & DP_SYNC_VS_HIGH)
+		flags |= DRM_MODE_FLAG_PVSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NVSYNC;
+
+	return flags;
+}
+
 /* Return which DP Port should be selected for Transcoder DP control */
 int
 intel_trans_dp_port_sel(struct drm_crtc *crtc)
@@ -2579,6 +2604,7 @@ intel_dp_init(struct drm_device *dev, int output_reg)
 	intel_dp_i2c_init(intel_dp, intel_connector, name);
 
 	intel_encoder->hot_plug = intel_dp_hot_plug;
+	intel_encoder->mode_flags = intel_dp_mode_flags;
 
 	if (is_edp(intel_dp)) {
 		dev_priv->int_edp_connector = connector;

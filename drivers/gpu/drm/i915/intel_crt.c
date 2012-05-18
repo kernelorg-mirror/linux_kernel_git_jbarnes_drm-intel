@@ -523,6 +523,33 @@ static void intel_crt_reset(struct drm_connector *connector)
 		crt->force_hotplug_required = 1;
 }
 
+static u32 intel_crt_mode_flags(struct intel_encoder *intel_encoder)
+{
+	struct drm_device *dev = intel_encoder->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	int adpa_reg;
+	u32 val, flags = 0;
+
+	if (HAS_PCH_SPLIT(dev))
+		adpa_reg = PCH_ADPA;
+	else
+		adpa_reg = ADPA;
+
+	val = I915_READ(adpa_reg);
+
+	if (val & ADPA_HSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PHSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NHSYNC;
+
+	if (val & ADPA_VSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PVSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NVSYNC;
+
+	return flags;
+}
+
 /*
  * Routines for controlling stuff on the analog port
  */
@@ -640,6 +667,8 @@ void intel_crt_init(struct drm_device *dev)
 		connector->polled = DRM_CONNECTOR_POLL_HPD;
 	else
 		connector->polled = DRM_CONNECTOR_POLL_CONNECT;
+
+	crt->base.mode_flags = intel_crt_mode_flags;
 
 	/*
 	 * Configure the automatic hotplug detection stuff

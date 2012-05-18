@@ -888,6 +888,11 @@ static bool intel_lvds_supported(struct drm_device *dev)
 	return IS_MOBILE(dev) && !IS_I830(dev);
 }
 
+static u32 intel_lvds_mode_flags(struct intel_encoder *encoder)
+{
+	return 0;
+}
+
 static int intel_lvds_get_pipe(struct intel_lvds *intel_lvds)
 {
 	struct intel_encoder *intel_encoder = &intel_lvds->base;
@@ -1125,6 +1130,8 @@ out:
 	/* keep the LVDS connector */
 	dev_priv->int_lvds_connector = connector;
 	drm_sysfs_connector_add(connector);
+
+	intel_lvds->base.mode_flags = intel_lvds_mode_flags;
 
 	intel_panel_setup_backlight(dev);
 

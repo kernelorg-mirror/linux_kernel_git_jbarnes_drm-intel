@@ -1552,6 +1552,8 @@ intel_tv_init(struct drm_device *dev)
 	intel_encoder = &intel_tv->base;
 	connector = &intel_connector->base;
 
+	intel_encoder->mode_flags = intel_mode_flags_none;
+
 	/* The documentation, for the older chipsets at least, recommend
 	 * using a polling method rather than hotplug detection for TVs.
 	 * This is because in order to perform the hotplug detection, the PLLs
