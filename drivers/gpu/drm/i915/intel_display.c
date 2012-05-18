@@ -5637,8 +5637,9 @@ void intel_release_load_detect_pipe(struct intel_encoder *intel_encoder,
 }
 
 /* Returns the clock of the currently programmed mode of the given pipe. */
-static int intel_crtc_clock_get(struct drm_device *dev, struct drm_crtc *crtc)
+static int intel_crtc_clock_get(struct drm_crtc *crtc)
 {
+	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
@@ -5767,7 +5768,7 @@ struct drm_display_mode *intel_crtc_mode_get(struct drm_crtc *crtc)
 	if (!mode)
 		return NULL;
 
-	mode->clock = intel_crtc_clock_get(dev, crtc);
+	mode->clock = intel_crtc_clock_get(crtc);
 	mode->hdisplay = (htot & 0xffff) + 1;
 	mode->htotal = ((htot & 0xffff0000) >> 16) + 1;
 	mode->hsync_start = (hsync & 0xffff) + 1;
