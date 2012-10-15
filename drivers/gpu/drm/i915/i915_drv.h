@@ -873,6 +873,8 @@ typedef struct drm_i915_private {
 
 	struct delayed_work gen6_power_work;
 
+	bool needs_gtt_restore;
+
 	enum no_fbc_reason no_fbc_reason;
 
 	struct drm_mm_node *compressed_fb;

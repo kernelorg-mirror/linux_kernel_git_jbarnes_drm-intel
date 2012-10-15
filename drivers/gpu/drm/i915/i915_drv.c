@@ -540,7 +540,8 @@ static int i915_drm_thaw(struct drm_device *dev)
 
 	intel_gt_reset(dev);
 
-	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
+	if (drm_core_check_feature(dev, DRIVER_MODESET) &&
+	    dev_priv->needs_gtt_restore) {
 		mutex_lock(&dev->struct_mutex);
 		i915_gem_restore_gtt_mappings(dev);
 		mutex_unlock(&dev->struct_mutex);

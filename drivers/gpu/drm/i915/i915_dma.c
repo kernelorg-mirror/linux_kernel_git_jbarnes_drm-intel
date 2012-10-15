@@ -1339,6 +1339,10 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	/* FIXME: do pre/post-mode set stuff in core KMS code */
 	dev->vblank_disable_allowed = 1;
 
+	/* Gen4+ should have saner BIOSes (we hope) */
+	if (INTEL_INFO(dev)->gen < 4)
+		dev_priv->needs_gtt_restore = true;
+
 	ret = intel_fbdev_init(dev);
 	if (ret)
 		goto cleanup_irq;
