@@ -871,6 +871,8 @@ typedef struct drm_i915_private {
 		int r_t;
 	} ips;
 
+	struct delayed_work gen6_power_work;
+
 	enum no_fbc_reason no_fbc_reason;
 
 	struct drm_mm_node *compressed_fb;
@@ -1268,6 +1270,7 @@ void i915_handle_error(struct drm_device *dev, bool wedged);
 extern void intel_irq_init(struct drm_device *dev);
 extern void intel_gt_init(struct drm_device *dev);
 extern void intel_gt_reset(struct drm_device *dev);
+extern void intel_gt_cleanup(struct drm_device *dev);
 
 void i915_error_state_free(struct kref *error_ref);
 

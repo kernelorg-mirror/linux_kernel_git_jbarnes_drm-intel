@@ -3312,15 +3312,34 @@ void intel_disable_gt_powersave(struct drm_device *dev)
 	}
 }
 
+static void intel_gen6_powersave_work(struct work_struct *work)
+{
+	struct drm_i915_private *dev_priv =
+		container_of(work, struct drm_i915_private,
+			     gen6_power_work.work);
+	struct drm_device *dev = dev_priv->dev;
+
+	mutex_lock(&dev->struct_mutex);
+	gen6_enable_rps(dev);
+	gen6_update_ring_freq(dev);
+	mutex_unlock(&dev->struct_mutex);
+}
+
 void intel_enable_gt_powersave(struct drm_device *dev)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	if (IS_IRONLAKE_M(dev)) {
 		ironlake_enable_drps(dev);
 		ironlake_enable_rc6(dev);
 		intel_init_emon(dev);
 	} else if ((IS_GEN6(dev) || IS_GEN7(dev)) && !IS_VALLEYVIEW(dev)) {
-		gen6_enable_rps(dev);
-		gen6_update_ring_freq(dev);
+		/*
+		 * PCU communication is slow and this doesn't need to be
+		 * done at any specific time, so do this out of our fast path
+		 * to make resume and init faster.
+		 */
+		schedule_delayed_work(&dev_priv->gen6_power_work, HZ);
 	}
 }
 
@@ -4175,6 +4194,15 @@ void intel_gt_init(struct drm_device *dev)
 		dev_priv->gt.force_wake_get = __gen6_gt_force_wake_get;
 		dev_priv->gt.force_wake_put = __gen6_gt_force_wake_put;
 	}
+	INIT_DELAYED_WORK(&dev_priv->gen6_power_work,
+			  intel_gen6_powersave_work);
+}
+
+void intel_gt_cleanup(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	cancel_delayed_work_sync(&dev_priv->gen6_power_work);
 }
 
 int sandybridge_pcode_read(struct drm_i915_private *dev_priv, u8 mbox, u32 *val)
