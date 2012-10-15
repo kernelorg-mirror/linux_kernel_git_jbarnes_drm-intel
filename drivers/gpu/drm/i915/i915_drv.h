@@ -453,6 +453,12 @@ typedef struct drm_i915_private {
 	u32 hotplug_supported_mask;
 	struct work_struct hotplug_work;
 
+	/*
+	 * The console may be contended at resume, but we don't
+	 * want it to block on it.
+	 */
+	struct work_struct console_resume_work;
+
 	int num_pipe;
 	int num_pch_pll;
 
@@ -1253,6 +1259,7 @@ extern unsigned long i915_mch_val(struct drm_i915_private *dev_priv);
 extern unsigned long i915_gfx_val(struct drm_i915_private *dev_priv);
 extern void i915_update_gfx_val(struct drm_i915_private *dev_priv);
 
+extern void intel_console_resume(struct work_struct *work);
 
 /* i915_irq.c */
 void i915_hangcheck_elapsed(unsigned long data);
