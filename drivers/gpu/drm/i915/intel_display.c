@@ -6580,27 +6580,40 @@ intel_framebuffer_create_for_mode(struct drm_device *dev,
 	return intel_framebuffer_create(dev, &mode_cmd, obj);
 }
 
+static bool
+mode_fits_in_fb(struct drm_display_mode *mode,
+		struct drm_framebuffer *fb)
+{
+	struct drm_i915_gem_object *obj;
+	int min_pitch;
+
+	min_pitch = intel_framebuffer_pitch_for_width(mode->hdisplay,
+						      fb->bits_per_pixel);
+	if (fb->pitches[0] < min_pitch)
+		return false;
+
+	obj = to_intel_framebuffer(fb)->obj;
+	if (obj == NULL)
+		return false;
+
+	if (obj->base.size < mode->vdisplay * fb->pitches[0])
+		return false;
+
+	return true;
+}
+
 static struct drm_framebuffer *
 mode_fits_in_fbdev(struct drm_device *dev,
 		   struct drm_display_mode *mode)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct drm_i915_gem_object *obj;
 	struct drm_framebuffer *fb;
 
 	if (dev_priv->fbdev == NULL)
 		return NULL;
 
-	obj = dev_priv->fbdev->ifb.obj;
-	if (obj == NULL)
-		return NULL;
-
 	fb = &dev_priv->fbdev->ifb.base;
-	if (fb->pitches[0] < intel_framebuffer_pitch_for_width(mode->hdisplay,
-							       fb->bits_per_pixel))
-		return NULL;
-
-	if (obj->base.size < mode->vdisplay * fb->pitches[0])
+	if (!mode_fits_in_fb(mode, fb))
 		return NULL;
 
 	return fb;
@@ -9277,6 +9290,11 @@ setup_pipes:
 
 		if (crtc->base.enabled)
 			crtc->mode_valid = intel_crtc_get_mode(&crtc->base, &crtc->base.mode);
+
+		if (crtc->base.fb &&
+		    !mode_fits_in_fb(&crtc->base.mode, crtc->base.fb))
+			crtc->mode_valid = false;
+
 		if (crtc->mode_valid) {
 			DRM_DEBUG_KMS("found active mode: ");
 			drm_mode_debug_printmodeline(&crtc->base.mode);
