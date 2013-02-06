@@ -35,6 +35,16 @@
 
 #define PCI_LBPC 0xf4 /* legacy/combination backlight modes */
 
+bool intel_connector_get_panel_fixed_mode(struct intel_connector *connector,
+					  struct drm_display_mode *mode)
+{
+	if (!connector->panel.fixed_mode)
+		return false;
+
+	*mode = *connector->panel.fixed_mode;
+	return true;
+}
+
 void
 intel_fixed_panel_mode(struct drm_display_mode *fixed_mode,
 		       struct drm_display_mode *adjusted_mode)

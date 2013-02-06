@@ -216,6 +216,7 @@ static bool intel_fb_initial_config(struct drm_fb_helper *fb_helper,
 	for (i = 0; i < fb_helper->connector_count; i++) {
 		struct drm_connector *connector;
 		struct drm_encoder *encoder;
+		struct drm_display_mode mode;
 
 		connector = fb_helper->connector_info[i]->connector;
 		if (!enabled[i]) {
@@ -240,6 +241,14 @@ static bool intel_fb_initial_config(struct drm_fb_helper *fb_helper,
 
 		if (!to_intel_crtc(encoder->crtc)->mode_valid) {
 			DRM_DEBUG_KMS("connector %s on crtc %d has an invalid mode, aborting\n",
+				      drm_get_connector_name(connector),
+				      encoder->crtc->base.id);
+			return false;
+		}
+
+		if (intel_connector_get_preferred_mode(to_intel_connector(connector), &mode) &&
+		    !drm_mode_equal(&mode, &encoder->crtc->mode)) {
+			DRM_DEBUG_KMS("connector %s on crtc %d has an non-native mode, aborting\n",
 				      drm_get_connector_name(connector),
 				      encoder->crtc->base.id);
 			return false;

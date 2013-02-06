@@ -2926,6 +2926,7 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 	}
 
 	if (is_edp(intel_dp)) {
+		intel_connector->get_preferred_mode = intel_connector_get_panel_fixed_mode;
 		intel_panel_init(&intel_connector->panel, fixed_mode);
 		intel_panel_setup_backlight(connector);
 	}

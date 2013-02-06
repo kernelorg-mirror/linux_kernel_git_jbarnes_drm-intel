@@ -1129,6 +1129,7 @@ bool intel_lvds_init(struct drm_device *dev)
 	intel_encoder->get_hw_state = intel_lvds_get_hw_state;
 	intel_encoder->get_mode_flags = intel_lvds_get_mode_flags;
 	intel_connector->get_hw_state = intel_connector_get_hw_state;
+	intel_connector->get_preferred_mode = intel_connector_get_panel_fixed_mode;
 
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
 	intel_encoder->type = INTEL_OUTPUT_LVDS;

@@ -9424,6 +9424,15 @@ void intel_connector_attach_encoder(struct intel_connector *connector,
 					  &encoder->base);
 }
 
+bool intel_connector_get_preferred_mode(struct intel_connector *connector,
+					struct drm_display_mode *mode)
+{
+	if (!connector->get_preferred_mode)
+		return false;
+
+	return connector->get_preferred_mode(connector, mode);
+}
+
 /*
  * set vga decode state - true == enable VGA decode
  */

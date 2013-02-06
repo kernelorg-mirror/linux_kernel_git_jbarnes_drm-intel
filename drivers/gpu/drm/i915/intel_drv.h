@@ -204,6 +204,9 @@ struct intel_connector {
 	 * and active (i.e. dpms ON state). */
 	bool (*get_hw_state)(struct intel_connector *);
 
+	bool (*get_preferred_mode)(struct intel_connector *,
+				   struct drm_display_mode *);
+
 	/* Panel info for eDP and LVDS */
 	struct intel_panel panel;
 
@@ -514,6 +517,9 @@ extern int intel_panel_init(struct intel_panel *panel,
 			    struct drm_display_mode *fixed_mode);
 extern void intel_panel_fini(struct intel_panel *panel);
 
+extern bool intel_connector_get_panel_fixed_mode(struct intel_connector *connector,
+						 struct drm_display_mode *mode);
+
 extern void intel_fixed_panel_mode(struct drm_display_mode *fixed_mode,
 				   struct drm_display_mode *adjusted_mode);
 extern void intel_pch_panel_fitting(struct drm_device *dev,
@@ -585,6 +591,8 @@ hdmi_to_dig_port(struct intel_hdmi *intel_hdmi)
 bool ibx_digital_port_connected(struct drm_i915_private *dev_priv,
 				struct intel_digital_port *port);
 
+extern bool intel_connector_get_preferred_mode(struct intel_connector *connector,
+					       struct drm_display_mode *mode);
 extern void intel_connector_attach_encoder(struct intel_connector *connector,
 					   struct intel_encoder *encoder);
 extern struct drm_encoder *intel_best_encoder(struct drm_connector *connector);
