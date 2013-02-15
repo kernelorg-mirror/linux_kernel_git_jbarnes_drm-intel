@@ -149,6 +149,9 @@ static int intelfb_create(struct intel_fbdev *ifbdev,
 	}
 	info->screen_size = size;
 
+	/* This driver doesn't need a VT switch to restore the mode on resume */
+	info->skip_vt_switch = true;
+
 //	memset(info->screen_base, 0, size);
 
 	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
