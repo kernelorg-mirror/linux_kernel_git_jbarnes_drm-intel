@@ -8109,10 +8109,8 @@ intel_set_config_compute_mode_changes(struct drm_mode_set *set,
 	/* We should be able to check here if the fb has the same properties
 	 * and then just flip_or_move it */
 	if (set->crtc->fb != set->fb) {
-		/* If we have no fb then treat it as a full mode set */
 		if (set->crtc->fb == NULL) {
-			DRM_DEBUG_KMS("crtc has no fb, full mode set\n");
-			config->mode_changed = true;
+			config->fb_changed = true;
 		} else if (set->fb == NULL) {
 			config->mode_changed = true;
 		} else if (set->fb->depth != set->crtc->fb->depth) {
