@@ -8985,6 +8985,7 @@ void intel_modeset_setup_hw_state(struct drm_device *dev,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	enum pipe pipe;
 	u32 tmp;
+	struct drm_plane *plane;
 	struct intel_crtc *crtc;
 	struct intel_encoder *encoder;
 	struct intel_connector *connector;
@@ -9081,8 +9082,20 @@ void intel_modeset_setup_hw_state(struct drm_device *dev,
 
 	if (force_restore) {
 		for_each_pipe(pipe) {
-			intel_crtc_restore_mode(dev_priv->pipe_to_crtc_mapping[pipe]);
+			struct drm_crtc *crtc =
+				dev_priv->pipe_to_crtc_mapping[pipe];
+			struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+
+			intel_crtc_restore_mode(crtc);
+			if (intel_crtc->cursor_visible) {
+				/* Force update for previously enabled cursor */
+				intel_crtc->cursor_visible = false;
+				intel_crtc_update_cursor(&intel_crtc->base,
+							 true);
+			}
 		}
+		list_for_each_entry(plane, &dev->mode_config.plane_list, head)
+			intel_plane_restore(plane);
 
 		i915_redisable_vga(dev);
 	} else {
