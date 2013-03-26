@@ -1806,7 +1806,7 @@ static inline void intel_unregister_dsm_handler(void) { return; }
 
 /* modesetting */
 extern void intel_modeset_init_hw(struct drm_device *dev);
-extern void intel_modeset_init(struct drm_device *dev);
+extern void intel_modeset_init(struct drm_device *dev, bool *was_vga_enabled);
 extern void intel_modeset_gem_init(struct drm_device *dev);
 extern void intel_modeset_cleanup(struct drm_device *dev);
 extern int intel_modeset_vga_set_state(struct drm_device *dev, bool state);

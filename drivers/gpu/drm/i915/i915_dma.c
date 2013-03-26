@@ -1273,6 +1273,7 @@ static const struct vga_switcheroo_client_ops i915_switcheroo_ops = {
 static int i915_load_modeset_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	bool was_vga_enabled;
 	int ret;
 
 	ret = intel_parse_bios(dev);
@@ -1309,7 +1310,11 @@ static int i915_load_modeset_init(struct drm_device *dev)
 
 	/* Important: The output setup functions called by modeset_init need
 	 * working irqs for e.g. gmbus and dp aux transfers. */
-	intel_modeset_init(dev);
+	intel_modeset_init(dev, &was_vga_enabled);
+
+	/* Wrap existing BIOS mode configuration prior to GEM takeover */
+	if (!was_vga_enabled)
+		intel_fbdev_init_bios(dev);
 
 	ret = i915_gem_init(dev);
 	if (ret)
@@ -1323,6 +1328,7 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	/* FIXME: do pre/post-mode set stuff in core KMS code */
 	dev->vblank_disable_allowed = 1;
 
+	/* Install a default KMS/GEM fbcon if we failed to wrap the BIOS fb */
 	ret = intel_fbdev_init(dev);
 	if (ret)
 		goto cleanup_gem;
