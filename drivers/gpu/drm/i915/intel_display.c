@@ -9298,12 +9298,19 @@ setup_pipes:
 			      crtc->active ? "enabled" : "disabled");
 
 
-		if (crtc->base.enabled)
+		if (crtc->base.enabled) {
 			crtc->mode_valid = intel_crtc_get_mode(&crtc->base, &crtc->base.mode);
+			DRM_DEBUG_KMS("[CRTC:%d]: mode valid? %s\n",
+				      crtc->base.base.id,
+				      crtc->mode_valid ? "yes" : "no");
+		}
 
 		if (crtc->base.fb &&
-		    !mode_fits_in_fb(&crtc->base.mode, crtc->base.fb))
+		    !mode_fits_in_fb(&crtc->base.mode, crtc->base.fb)) {
 			crtc->mode_valid = false;
+			DRM_DEBUG_KMS("[CRTC:%d] mode doesn't fit in fb\n",
+				      crtc->base.base.id);
+		}
 
 		if (crtc->mode_valid) {
 			DRM_DEBUG_KMS("found active mode: ");
