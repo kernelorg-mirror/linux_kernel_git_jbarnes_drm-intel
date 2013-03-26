@@ -134,6 +134,13 @@ struct intel_framebuffer {
 	struct drm_i915_gem_object *obj;
 };
 
+inline static u32
+intel_framebuffer_pitch_for_width(int width, int bpp)
+{
+	u32 pitch = DIV_ROUND_UP(width * bpp, 8);
+	return ALIGN(pitch, 64);
+}
+
 struct intel_fbdev {
 	struct drm_fb_helper helper;
 	struct intel_framebuffer ifb;

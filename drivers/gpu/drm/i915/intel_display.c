@@ -6552,13 +6552,6 @@ intel_framebuffer_create(struct drm_device *dev,
 }
 
 static u32
-intel_framebuffer_pitch_for_width(int width, int bpp)
-{
-	u32 pitch = DIV_ROUND_UP(width * bpp, 8);
-	return ALIGN(pitch, 64);
-}
-
-static u32
 intel_framebuffer_size_for_mode(struct drm_display_mode *mode, int bpp)
 {
 	u32 pitch = intel_framebuffer_pitch_for_width(mode->hdisplay, bpp);
