@@ -81,6 +81,27 @@ static bool intel_crt_get_hw_state(struct intel_encoder *encoder,
 	return true;
 }
 
+static unsigned intel_crt_get_mode_flags(struct intel_encoder *encoder)
+{
+	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
+	struct intel_crt *crt = intel_encoder_to_crt(encoder);
+	u32 tmp, flags = 0;
+
+	tmp = I915_READ(crt->adpa_reg);
+
+	if (tmp & ADPA_HSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PHSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NHSYNC;
+
+	if (tmp & ADPA_VSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PVSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NVSYNC;
+
+	return flags;
+}
+
 static void intel_disable_crt(struct intel_encoder *encoder)
 {
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
@@ -776,10 +797,12 @@ void intel_crt_init(struct drm_device *dev)
 
 	crt->base.disable = intel_disable_crt;
 	crt->base.enable = intel_enable_crt;
-	if (HAS_DDI(dev))
+	if (HAS_DDI(dev)) {
 		crt->base.get_hw_state = intel_ddi_get_hw_state;
-	else
+	} else {
 		crt->base.get_hw_state = intel_crt_get_hw_state;
+		crt->base.get_mode_flags = intel_crt_get_mode_flags;
+	}
 	intel_connector->get_hw_state = intel_connector_get_hw_state;
 
 	drm_encoder_helper_add(&crt->base.base, &crt_encoder_funcs);

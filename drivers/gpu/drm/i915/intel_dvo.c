@@ -129,6 +129,22 @@ static bool intel_dvo_get_hw_state(struct intel_encoder *encoder,
 	return true;
 }
 
+static unsigned
+intel_dvo_get_mode_flags(struct intel_encoder *encoder)
+{
+	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
+	struct intel_dvo *intel_dvo = enc_to_intel_dvo(&encoder->base);
+	u32 tmp, flags = 0;
+
+	tmp = I915_READ(intel_dvo->dev.dvo_reg);
+	if (tmp & DVO_HSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PHSYNC;
+	if (tmp & DVO_VSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PVSYNC;
+
+	return flags;
+}
+
 static void intel_disable_dvo(struct intel_encoder *encoder)
 {
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
@@ -389,29 +405,26 @@ intel_dvo_get_current_mode(struct drm_connector *connector)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_dvo *intel_dvo = intel_attached_dvo(connector);
 	uint32_t dvo_val = I915_READ(intel_dvo->dev.dvo_reg);
-	struct drm_display_mode *mode = NULL;
+	struct drm_display_mode *fixed_mode = NULL;
 
 	/* If the DVO port is active, that'll be the LVDS, so we can pull out
 	 * its timings to get how the BIOS set up the panel.
 	 */
 	if (dvo_val & DVO_ENABLE) {
+		struct drm_display_mode mode;
 		struct drm_crtc *crtc;
 		int pipe = (dvo_val & DVO_PIPE_B_SELECT) ? 1 : 0;
 
 		crtc = intel_get_crtc_for_pipe(dev, pipe);
-		if (crtc) {
-			mode = intel_crtc_mode_get(dev, crtc);
-			if (mode) {
-				mode->type |= DRM_MODE_TYPE_PREFERRED;
-				if (dvo_val & DVO_HSYNC_ACTIVE_HIGH)
-					mode->flags |= DRM_MODE_FLAG_PHSYNC;
-				if (dvo_val & DVO_VSYNC_ACTIVE_HIGH)
-					mode->flags |= DRM_MODE_FLAG_PVSYNC;
-			}
+		if (intel_crtc_get_mode(crtc, &mode))
+			fixed_mode = drm_mode_duplicate(dev, &mode);
+		if (fixed_mode) {
+			fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
+			fixed_mode->flags = intel_dvo_get_mode_flags(&intel_dvo->base);
 		}
 	}
 
-	return mode;
+	return fixed_mode;
 }
 
 void intel_dvo_init(struct drm_device *dev)
@@ -440,6 +453,7 @@ void intel_dvo_init(struct drm_device *dev)
 	intel_encoder->disable = intel_disable_dvo;
 	intel_encoder->enable = intel_enable_dvo;
 	intel_encoder->get_hw_state = intel_dvo_get_hw_state;
+	intel_encoder->get_mode_flags = intel_dvo_get_mode_flags;
 	intel_connector->get_hw_state = intel_dvo_connector_get_hw_state;
 
 	/* Now, try to find a controller */

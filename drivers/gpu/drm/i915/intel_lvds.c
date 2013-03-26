@@ -88,6 +88,26 @@ static bool intel_lvds_get_hw_state(struct intel_encoder *encoder,
 	return true;
 }
 
+static unsigned intel_lvds_get_mode_flags(struct intel_encoder *encoder)
+{
+	struct drm_device *dev = encoder->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 lvds_reg, tmp, flags = 0;
+
+	if (HAS_PCH_SPLIT(dev))
+		lvds_reg = PCH_LVDS;
+	else
+		lvds_reg = LVDS;
+
+	tmp = I915_READ(lvds_reg);
+	if (tmp & LVDS_HSYNC_POLARITY)
+		flags |= DRM_MODE_FLAG_NHSYNC;
+	if (tmp & LVDS_VSYNC_POLARITY)
+		flags |= DRM_MODE_FLAG_NVSYNC;
+
+	return flags;
+}
+
 /* The LVDS pin pair needs to be on before the DPLLs are enabled.
  * This is an exception to the general rule that mode_set doesn't turn
  * things on.
@@ -1107,6 +1127,7 @@ bool intel_lvds_init(struct drm_device *dev)
 	intel_encoder->pre_pll_enable = intel_pre_pll_enable_lvds;
 	intel_encoder->disable = intel_disable_lvds;
 	intel_encoder->get_hw_state = intel_lvds_get_hw_state;
+	intel_encoder->get_mode_flags = intel_lvds_get_mode_flags;
 	intel_connector->get_hw_state = intel_connector_get_hw_state;
 
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
@@ -1218,11 +1239,15 @@ bool intel_lvds_init(struct drm_device *dev)
 	crtc = intel_get_crtc_for_pipe(dev, pipe);
 
 	if (crtc && (lvds & LVDS_PORT_EN)) {
-		fixed_mode = intel_crtc_mode_get(dev, crtc);
+		struct drm_display_mode mode;
+
+		if (intel_crtc_get_mode(crtc, &mode))
+			fixed_mode = drm_mode_duplicate(dev, &mode);
 		if (fixed_mode) {
 			DRM_DEBUG_KMS("using current (BIOS) mode: ");
 			drm_mode_debug_printmodeline(fixed_mode);
 			fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
+			fixed_mode->flags = intel_lvds_get_mode_flags(intel_encoder);
 			goto out;
 		}
 	}

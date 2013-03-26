@@ -1254,6 +1254,27 @@ static bool intel_sdvo_get_hw_state(struct intel_encoder *encoder,
 	return true;
 }
 
+static unsigned intel_sdvo_get_mode_flags(struct intel_encoder *encoder)
+{
+	struct intel_sdvo *intel_sdvo = to_intel_sdvo(&encoder->base);
+	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
+	u32 tmp, flags = 0;
+
+	tmp = I915_READ(intel_sdvo->sdvo_reg);
+
+	if (tmp & SDVO_HSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PHSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NHSYNC;
+
+	if (tmp & SDVO_VSYNC_ACTIVE_HIGH)
+		flags |= DRM_MODE_FLAG_PVSYNC;
+	else
+		flags |= DRM_MODE_FLAG_NVSYNC;
+
+	return flags;
+}
+
 static void intel_disable_sdvo(struct intel_encoder *encoder)
 {
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
@@ -2784,6 +2805,8 @@ bool intel_sdvo_init(struct drm_device *dev, uint32_t sdvo_reg, bool is_sdvob)
 	intel_encoder->disable = intel_disable_sdvo;
 	intel_encoder->enable = intel_enable_sdvo;
 	intel_encoder->get_hw_state = intel_sdvo_get_hw_state;
+	if (INTEL_INFO(dev)->gen >= 4)
+		intel_encoder->get_mode_flags = intel_sdvo_get_mode_flags;
 
 	/* In default case sdvo lvds is false */
 	if (!intel_sdvo_get_capabilities(intel_sdvo, &intel_sdvo->caps))

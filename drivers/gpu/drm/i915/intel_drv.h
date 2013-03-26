@@ -176,6 +176,9 @@ struct intel_encoder {
 	 * the encoder is active. If the encoder is enabled it also set the pipe
 	 * it is connected to in the pipe parameter. */
 	bool (*get_hw_state)(struct intel_encoder *, enum pipe *pipe);
+	/* Reconstructs the equivalent mode flags for the current hardware
+	 * state. */
+	unsigned (*get_mode_flags)(struct intel_encoder *);
 	int crtc_mask;
 };
 
@@ -586,8 +589,8 @@ extern void intel_connector_attach_encoder(struct intel_connector *connector,
 					   struct intel_encoder *encoder);
 extern struct drm_encoder *intel_best_encoder(struct drm_connector *connector);
 
-extern struct drm_display_mode *intel_crtc_mode_get(struct drm_device *dev,
-						    struct drm_crtc *crtc);
+extern bool intel_crtc_get_mode(struct drm_crtc *crtc,
+				struct drm_display_mode *mode);
 int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
 extern enum transcoder

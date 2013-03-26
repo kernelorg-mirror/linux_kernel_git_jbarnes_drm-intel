@@ -6748,11 +6748,12 @@ void intel_release_load_detect_pipe(struct drm_connector *connector,
 }
 
 /* Returns the clock of the currently programmed mode of the given pipe. */
-static int intel_crtc_clock_get(struct drm_device *dev, struct drm_crtc *crtc)
+static int i9xx_crtc_clock_get(struct drm_crtc *crtc)
 {
+	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe;
+	enum pipe pipe = intel_crtc->pipe;
 	u32 dpll = I915_READ(DPLL(pipe));
 	u32 fp;
 	intel_clock_t clock;
@@ -6835,35 +6836,104 @@ static int intel_crtc_clock_get(struct drm_device *dev, struct drm_crtc *crtc)
 }
 
 /** Returns the currently programmed mode of the given pipe. */
-struct drm_display_mode *intel_crtc_mode_get(struct drm_device *dev,
-					     struct drm_crtc *crtc)
+static bool i9xx_crtc_get_mode(struct drm_crtc *crtc,
+			       struct drm_display_mode *mode)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_private *dev_priv = crtc->dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	enum transcoder cpu_transcoder = intel_crtc->cpu_transcoder;
-	struct drm_display_mode *mode;
-	int htot = I915_READ(HTOTAL(cpu_transcoder));
-	int hsync = I915_READ(HSYNC(cpu_transcoder));
-	int vtot = I915_READ(VTOTAL(cpu_transcoder));
-	int vsync = I915_READ(VSYNC(cpu_transcoder));
+	u32 tmp;
 
-	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
-	if (!mode)
-		return NULL;
+	memset(mode, 0, sizeof(*mode));
 
-	mode->clock = intel_crtc_clock_get(dev, crtc);
-	mode->hdisplay = (htot & 0xffff) + 1;
-	mode->htotal = ((htot & 0xffff0000) >> 16) + 1;
-	mode->hsync_start = (hsync & 0xffff) + 1;
-	mode->hsync_end = ((hsync & 0xffff0000) >> 16) + 1;
-	mode->vdisplay = (vtot & 0xffff) + 1;
-	mode->vtotal = ((vtot & 0xffff0000) >> 16) + 1;
-	mode->vsync_start = (vsync & 0xffff) + 1;
-	mode->vsync_end = ((vsync & 0xffff0000) >> 16) + 1;
+	tmp = I915_READ(HTOTAL(cpu_transcoder));
+	mode->hdisplay = (tmp & 0xffff) + 1;
+	mode->htotal = ((tmp & 0xffff0000) >> 16) + 1;
+
+	tmp = I915_READ(HSYNC(cpu_transcoder));
+	mode->hsync_start = (tmp & 0xffff) + 1;
+	mode->hsync_end = ((tmp & 0xffff0000) >> 16) + 1;
+
+	tmp = I915_READ(VTOTAL(cpu_transcoder));
+	mode->vdisplay = (tmp & 0xffff) + 1;
+	mode->vtotal = ((tmp & 0xffff0000) >> 16) + 1;
+
+	tmp = I915_READ(VSYNC(cpu_transcoder));
+	mode->vsync_start = (tmp & 0xffff) + 1;
+	mode->vsync_end = ((tmp & 0xffff0000) >> 16) + 1;
+
+	mode->clock = i9xx_crtc_clock_get(crtc);
 
 	drm_mode_set_name(mode);
 
-	return mode;
+	return true;
+}
+
+static int ironlake_crtc_clock_get(struct drm_crtc *crtc)
+{
+	struct drm_i915_private *dev_priv = crtc->dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	enum transcoder cpu_transcoder = intel_crtc->cpu_transcoder;
+	int clock;
+	u32 link_m;
+
+	/*
+	 * PCH platforms make this easy: we can just use the LINK_M1 reg.
+	 * Note: this may be the pixel clock for a fitted mode, in which
+	 * case it won't match the native mode clock.  That means we won't be
+	 * able to do a simple flip in the fastboot case.
+	 */
+	link_m = I915_READ(PIPE_LINK_M1(cpu_transcoder));
+
+	clock = link_m;
+
+	return clock;
+}
+
+static bool ironlake_crtc_get_mode(struct drm_crtc *crtc,
+				   struct drm_display_mode *mode)
+{
+	struct drm_i915_private *dev_priv = crtc->dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	enum transcoder cpu_transcoder = intel_crtc->cpu_transcoder;
+	u32 tmp;
+
+	memset(mode, 0, sizeof(*mode));
+
+	tmp = I915_READ(HTOTAL(cpu_transcoder));
+	mode->hdisplay = (tmp & 0xffff) + 1;
+	mode->htotal = ((tmp & 0xffff0000) >> 16) + 1;
+
+	tmp = I915_READ(HSYNC(cpu_transcoder));
+	mode->hsync_start = (tmp & 0xffff) + 1;
+	mode->hsync_end = ((tmp & 0xffff0000) >> 16) + 1;
+
+	tmp = I915_READ(VTOTAL(cpu_transcoder));
+	mode->vdisplay = (tmp & 0xffff) + 1;
+	mode->vtotal = ((tmp & 0xffff0000) >> 16) + 1;
+
+	tmp = I915_READ(VSYNC(cpu_transcoder));
+	mode->vsync_start = (tmp & 0xffff) + 1;
+	mode->vsync_end = ((tmp & 0xffff0000) >> 16) + 1;
+
+	mode->clock = ironlake_crtc_clock_get(crtc);
+
+	drm_mode_set_name(mode);
+
+	return true;
+}
+
+static __maybe_unused bool no_crtc_get_mode(struct drm_crtc *crtc,
+					    struct drm_display_mode *mode)
+{
+	return false;
+}
+
+bool intel_crtc_get_mode(struct drm_crtc *crtc,
+			 struct drm_display_mode *mode)
+{
+	struct drm_i915_private *dev_priv = crtc->dev->dev_private;
+	return dev_priv->display.crtc_get_mode(crtc, mode);
 }
 
 static void intel_increase_pllclock(struct drm_crtc *crtc)
@@ -8632,19 +8702,24 @@ static void intel_init_display(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
+	dev_priv->display.crtc_get_mode = no_crtc_get_mode;
+
 	if (HAS_DDI(dev)) {
+		dev_priv->display.crtc_get_mode = ironlake_crtc_get_mode;
 		dev_priv->display.crtc_mode_set = haswell_crtc_mode_set;
 		dev_priv->display.crtc_enable = haswell_crtc_enable;
 		dev_priv->display.crtc_disable = haswell_crtc_disable;
 		dev_priv->display.off = haswell_crtc_off;
 		dev_priv->display.update_plane = ironlake_update_plane;
 	} else if (HAS_PCH_SPLIT(dev)) {
+		dev_priv->display.crtc_get_mode = ironlake_crtc_get_mode;
 		dev_priv->display.crtc_mode_set = ironlake_crtc_mode_set;
 		dev_priv->display.crtc_enable = ironlake_crtc_enable;
 		dev_priv->display.crtc_disable = ironlake_crtc_disable;
 		dev_priv->display.off = ironlake_crtc_off;
 		dev_priv->display.update_plane = ironlake_update_plane;
 	} else {
+		dev_priv->display.crtc_get_mode = i9xx_crtc_get_mode;
 		dev_priv->display.crtc_mode_set = i9xx_crtc_mode_set;
 		dev_priv->display.crtc_enable = i9xx_crtc_enable;
 		dev_priv->display.crtc_disable = i9xx_crtc_disable;
@@ -9198,6 +9273,14 @@ setup_pipes:
 		DRM_DEBUG_KMS("[CRTC:%d] hw state readout: %s\n",
 			      crtc->base.base.id,
 			      crtc->active ? "enabled" : "disabled");
+
+
+		if (crtc->base.enabled)
+			crtc->mode_valid = intel_crtc_get_mode(&crtc->base, &crtc->base.mode);
+		if (crtc->mode_valid) {
+			DRM_DEBUG_KMS("found active mode: ");
+			drm_mode_debug_printmodeline(&crtc->base.mode);
+		}
 	}
 
 	if (HAS_DDI(dev))
@@ -9205,11 +9288,13 @@ setup_pipes:
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list,
 			    base.head) {
-		pipe = 0;
+		pipe = -1;
 
-		if (encoder->get_hw_state(encoder, &pipe)) {
-			encoder->base.crtc =
-				dev_priv->pipe_to_crtc_mapping[pipe];
+		if (encoder->get_hw_state(encoder, &pipe) && pipe != -1) {
+			crtc = to_intel_crtc(dev_priv->pipe_to_crtc_mapping[pipe]);
+			if (crtc->mode_valid && encoder->get_mode_flags)
+				crtc->base.mode.flags |= encoder->get_mode_flags(encoder);
+			encoder->base.crtc = &crtc->base;
 		} else {
 			encoder->base.crtc = NULL;
 		}
